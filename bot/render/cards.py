@@ -23,6 +23,7 @@ from bot.render.match_card import render_match_card
 from bot.render.player_card import render_player_card
 from bot.render.player_stats_card import player_stats_data, render_player_stats_card
 from bot.render.ranking_card import render_ranking_card
+from bot.render.schedule_card import render_schedule_card
 from bot.render.team_card import render_team_card
 from bot.utils.korean import STAFF_ROLES, country_ko, role_ko, stage_ko
 
@@ -381,4 +382,34 @@ async def build_player_stats_card(page: Any) -> bytes | None:
         return await _render(render_player_stats_card, player_stats_data(page), fetched)
     except Exception:
         log.exception("선수 통계 카드 생성 실패")
+        return None
+
+
+MAX_SCHEDULE_ROWS = 12
+
+
+async def build_schedule_card(title: str, subtitle: str, matches: list[Match], footer: str) -> bytes | None:
+    """하루 경기 일정 카드 PNG. 실패하면 None."""
+    if not render_enabled():
+        return None
+    try:
+        shown = matches[:MAX_SCHEDULE_ROWS]
+        urls: dict[str, str | None] = {}
+        rows = []
+        for i, m in enumerate(shown):
+            urls[f"a{i}"] = m.team1.logo_url if m.team1 else None
+            urls[f"b{i}"] = m.team2.logo_url if m.team2 else None
+            rows.append({
+                "time": fmt_time(m.scheduled_at), "team1": m.team1_name, "team2": m.team2_name,
+                "score1": m.team1_score, "score2": m.team2_score, "status": m.status,
+                "event": m.tournament_name or "", "logo1": f"a{i}", "logo2": f"b{i}",
+            })
+        fetched = await images.fetch_many(urls)
+        extra = len(matches) - len(shown)
+        data = {"title": title, "subtitle": subtitle, "rows": rows, "footer": footer,
+                "more": f"외 {extra}경기" if extra > 0 else None,
+                "empty_message": "이 날은 예정된 경기가 없습니다."}
+        return await _render(render_schedule_card, data, fetched)
+    except Exception:
+        log.exception("일정 카드 생성 실패")
         return None

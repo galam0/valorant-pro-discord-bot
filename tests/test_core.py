@@ -12,6 +12,7 @@ from bot.render.player_card import render_player_card
 from bot.render.ranking_card import render_ranking_card
 from bot.render.bracket_card import render_bracket_card
 from bot.scrapers.vlr import ParseError, parse_event_bracket, parse_player_page, parse_rankings, parse_search_events
+from bot.render.schedule_card import render_schedule_card
 from bot.render.player_stats_card import player_stats_data, render_player_stats_card
 from bot.services.ranking_service import _tokens, is_first_team
 from bot.utils.korean import flag_emoji
@@ -345,6 +346,19 @@ class AutocompleteMatchTest(unittest.TestCase):
         self.assertEqual(match(entries, "liq"), ["Team Liquid"])
         self.assertEqual(len(match(entries, "")), 3)
         self.assertEqual(match(entries, "zzz"), [])
+
+
+class ScheduleCardTest(unittest.TestCase):
+    ROWS = [
+        {"time": "오후 6:00", "team1": "Gen.G", "team2": "T1", "score1": 1, "score2": 0, "status": "live", "event": "VCT Pacific", "logo1": "a", "logo2": "b"},
+        {"time": "오후 9:00", "team1": "Paper Rex", "team2": "Nongshim RedForce", "score1": None, "score2": None, "status": "upcoming", "event": "VCT Pacific", "logo1": "a", "logo2": "b"},
+        {"time": "오후 3:00", "team1": "DRX", "team2": "Talon", "score1": 2, "score2": 1, "status": "completed", "event": "VCT Pacific – 플레이오프", "logo1": "a", "logo2": "b"},
+    ]
+
+    def test_render(self):
+        for rows, more in ((self.ROWS, "외 3경기"), ([], None)):
+            png = render_schedule_card({"title": "오늘의 경기 일정", "subtitle": "x", "rows": rows, "more": more, "footer": "f"}, {})
+            self.assertTrue(png.startswith(b"\x89PNG"))
 
 
 if __name__ == "__main__":

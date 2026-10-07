@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import case, delete, func, or_, select, text, update
@@ -814,5 +814,16 @@ async def get_upcoming_matches(session: AsyncSession, limit: int = 10) -> list[M
         .options(selectinload(Match.team1), selectinload(Match.team2))
         .order_by(case((Match.status == "live", 0), else_=1), Match.scheduled_at.asc().nulls_last())  # live 먼저
         .limit(limit)
+    )
+    return list(result.scalars())
+
+
+async def get_matches_between(session: AsyncSession, start: datetime, end: datetime) -> list[Match]:
+    """start 이상 end 미만에 시작하는 경기 (시간순). 진행 중인 경기가 날짜가 지나도 남도록 live는 별도로 포함."""
+    result = await session.execute(
+        select(Match)
+        .where(or_(Match.scheduled_at.between(start, end - timedelta(microseconds=1)), Match.status == "live"))
+        .options(selectinload(Match.team1), selectinload(Match.team2))
+        .order_by(Match.scheduled_at.asc().nulls_last())
     )
     return list(result.scalars())
