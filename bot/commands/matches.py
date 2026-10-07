@@ -96,10 +96,6 @@ class MatchCommands(commands.Cog):
         target = next((m for m in played if m.status == "live"), played[0])
         await send_match_detail(interaction, target.vlr_id, others=choices_from(played, detail.team.id))
 
-
-async def setup(bot: commands.Bot) -> None:
-    await bot.add_cog(MatchCommands(bot))
-
     @app_commands.command(name="일정", description="하루치 프로 경기 일정을 한 장의 이미지로 보여줍니다.")
     @app_commands.describe(날짜="보고 싶은 날 (기본: 오늘, 한국 시간 기준)")
     @app_commands.choices(날짜=DAY_CHOICES)
@@ -129,3 +125,7 @@ async def setup(bot: commands.Bot) -> None:
         if not listed:
             embed.description = "이 날은 예정된 경기가 없습니다."
         await interaction.followup.send(embed=embed)
+
+
+async def setup(bot: commands.Bot) -> None:
+    await bot.add_cog(MatchCommands(bot))

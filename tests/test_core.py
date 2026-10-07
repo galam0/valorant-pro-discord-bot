@@ -361,5 +361,19 @@ class ScheduleCardTest(unittest.TestCase):
             self.assertTrue(png.startswith(b"\x89PNG"))
 
 
+class CommandStructureTest(unittest.TestCase):
+    def test_commands_are_class_methods(self):
+        """명령어 함수가 setup() 안에 잘못 들어가면(들여쓰기 실수) 봇이 시작 때 죽는다."""
+        import ast
+        import glob
+
+        for path in glob.glob("bot/commands/*.py"):
+            tree = ast.parse(open(path, encoding="utf-8").read())
+            for node in tree.body:
+                if isinstance(node, ast.AsyncFunctionDef) and node.name == "setup":
+                    nested = [n.name for n in ast.walk(node) if isinstance(n, ast.AsyncFunctionDef) and n is not node]
+                    self.assertEqual(nested, [], path)
+
+
 if __name__ == "__main__":
     unittest.main()
