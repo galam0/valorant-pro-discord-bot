@@ -367,7 +367,7 @@ class GameCommands(commands.Cog):
             await interaction.response.send_message(embed=error_embed("이미 진행 중인 게임이 있어요."), ephemeral=True)
             return
         await interaction.response.defer()
-        kind = random.choice(["text", "agent", "agent", "weapon", "skin"])    # 종류는 항상 랜덤
+        kind = random.choices(["text", "agent", "weapon", "skin"], weights=[40, 30, 15, 15])[0]    # 글 40% · 그림 60%
         if kind != "text" and not render_enabled():
             kind = "text"
 
