@@ -69,7 +69,7 @@ python -m bot.main
 |---|---|---|
 | `DISCORD_TOKEN` | ✅ | 봇 토큰 |
 | `DATABASE_URL` | Phase 2~ | PostgreSQL 연결 문자열 |
-| `DEV_GUILD_ID` | | 개발 서버 ID. 설정 시 명령어가 즉시 반영됨 |
+| `DEV_GUILD_ID` | | 사용 안 함 (명령어는 봇이 들어간 모든 서버에 자동 등록) |
 | `ADMIN_USER_IDS` | | 관리자 사용자 ID (쉼표 구분) |
 | `LOG_LEVEL` | | 기본 `INFO` |
 | `PORT` | | Render가 자동 주입. 있으면 `/health` 서버를 띄움 (로컬에선 비워둠) |

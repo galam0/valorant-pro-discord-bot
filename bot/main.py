@@ -130,28 +130,49 @@ class ValorantBot(commands.Bot):
         # Slash Command만 사용하므로 message_content 같은 특권 인텐트는 필요 없음
         intents = discord.Intents.default()
         super().__init__(command_prefix=commands.when_mentioned, intents=intents)
+        self._commands_synced = False
 
     async def setup_hook(self) -> None:
-        """로그인 직후 1회 실행. 명령어(Cog)를 불러오고 Discord에 동기화한다."""
+        """로그인 직후 1회 실행. 명령어(Cog)를 불러온다. (동기화는 서버 목록을 안 뒤 on_ready에서)"""
         install_error_handler(self.tree)
         for ext in EXTENSIONS:
             await self.load_extension(ext)
 
-        if settings.dev_guild_id:
-            # 개발 서버에만 즉시 동기화 (반영까지 수 초)
-            guild = discord.Object(id=settings.dev_guild_id)
-            self.tree.copy_global_to(guild=guild)
-            synced = await self.tree.sync(guild=guild)
-            logger.info("개발 서버(%s)에 명령어 %d개 동기화 완료", settings.dev_guild_id, len(synced))
-        else:
-            # 전역 동기화 (처음 반영까지 최대 1시간 걸릴 수 있음)
-            synced = await self.tree.sync()
-            logger.info("전역 명령어 %d개 동기화 완료", len(synced))
+    # -- 명령어 동기화 ------------------------------------------------------
+    # 전역 등록은 새 서버에 반영되기까지 시간이 걸릴 수 있어서, 봇이 들어가 있는 서버마다
+    # '서버 전용'으로 등록한다 → 어느 서버든 몇 초 안에 명령어가 생긴다.
+    # (서버가 아주 많아지면(100곳 이상) 전역 등록으로 바꾸는 것이 좋다)
+
+    async def sync_guild(self, guild: discord.abc.Snowflake) -> int:
+        self.tree.copy_global_to(guild=guild)
+        synced = await self.tree.sync(guild=guild)
+        return len(synced)
 
     async def on_ready(self) -> None:
         assert self.user is not None
         logger.info("로그인: %s (ID: %s) / 서버 %d곳", self.user, self.user.id, len(self.guilds))
-        await self.change_presence(activity=discord.Game(name="/팀 · /경기 · /선수"))
+        await self.change_presence(activity=discord.Game(name="/팀 · /경기 · /전적"))
+
+        if self._commands_synced:  # 재연결 때마다 다시 하지 않음
+            return
+        self._commands_synced = True
+        ok = 0
+        for guild in self.guilds:
+            try:
+                count = await self.sync_guild(guild)
+                ok += 1
+                logger.info("명령어 %d개 동기화: %s", count, guild.name)
+            except discord.HTTPException as exc:
+                logger.warning("명령어 동기화 실패 (%s): %s", guild.name, exc)
+        logger.info("명령어 동기화 완료: 서버 %d/%d곳", ok, len(self.guilds))
+
+    async def on_guild_join(self, guild: discord.Guild) -> None:
+        """새 서버에 초대되면 바로 그 서버에 명령어를 등록한다."""
+        try:
+            count = await self.sync_guild(guild)
+            logger.info("새 서버 참가: %s → 명령어 %d개 등록", guild.name, count)
+        except discord.HTTPException as exc:
+            logger.warning("새 서버 명령어 등록 실패 (%s): %s", guild.name, exc)
 
 
 # ---------------------------------------------------------------------------
