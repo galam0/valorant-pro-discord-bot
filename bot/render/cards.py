@@ -200,7 +200,7 @@ def _onoff(v: str | None) -> str:
     return "켬" if low == "on" else "끔" if low == "off" else v
 
 
-async def build_player_card(detail: Any) -> bytes | None:
+async def build_player_card(detail: Any, empty_message: str | None = None) -> bytes | None:
     """선수 카드 PNG (detail: repository.PlayerDetail). 실패하면 None."""
     if not render_enabled():
         return None
@@ -255,7 +255,7 @@ async def build_player_card(detail: Any) -> bytes | None:
             "crosshair_raw": raw,
             "crosshair_code": ch.code if ch is not None else None,
             "updated": updated,
-            "empty_message": "ProSettings에 등록된 설정이 없는 선수입니다.",
+            "empty_message": empty_message or "ProSettings에 등록된 설정이 없는 선수입니다.",
         }
         return await asyncio.to_thread(render_player_card, data, fetched)
     except Exception:

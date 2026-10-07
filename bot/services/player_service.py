@@ -29,6 +29,7 @@ class PlayerResult:
     guessed_from: str | None = None  # 오타 보정으로 찾았으면 원래 검색어
     stale: bool = False              # 갱신 실패로 예전 정보를 보여주는 경우
     no_settings: bool = False        # ProSettings에 이 선수 페이지가 없음
+    fetch_error: str | None = None   # ProSettings 요청 자체가 실패한 이유 (차단, 네트워크 등)
 
 
 def _fresh(detail: repo.PlayerDetail) -> bool:
@@ -74,8 +75,8 @@ async def get_player(query: str, *, force: bool = False) -> PlayerResult:
                 return PlayerResult(detail, guessed_from=guessed, no_settings=detail.settings is None)
             raise PlayerNotFound(query, lookup.candidates) from None
         except Exception as exc:
-            log.warning("선수 설정 갱신 실패 (%s): %s", name, exc)
+            log.warning("선수 설정 갱신 실패 (%s): %s: %s", name, type(exc).__name__, exc)
             if detail is not None:
                 return PlayerResult(detail, guessed_from=guessed, stale=detail.settings is not None,
-                                    no_settings=detail.settings is None)
+                                    no_settings=detail.settings is None, fetch_error=str(exc))
             raise

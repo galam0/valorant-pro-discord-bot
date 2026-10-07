@@ -41,10 +41,14 @@ async def send_player(interaction: discord.Interaction, query: str, *, force: bo
         notes.append(f"🔎 '{result.guessed_from}' → **{result.detail.player.nickname}** 선수로 찾았어요.")
     if result.stale:
         notes.append("⚠️ 최신 정보를 가져오지 못해 이전에 저장된 설정을 표시합니다.")
+    elif result.fetch_error:
+        notes.append("⚠️ ProSettings에서 설정을 가져오지 못했습니다. 잠시 후 다시 시도해주세요.")
     content = "\n".join(notes) or None
 
     view = PlayerView(result.detail)
-    png = await build_player_card(result.detail)
+    empty = ("ProSettings에서 설정을 가져오지 못했습니다." if result.fetch_error
+             else "ProSettings에 등록된 설정이 없는 선수입니다.")
+    png = await build_player_card(result.detail, empty_message=empty)
     if png is not None:
         file = discord.File(BytesIO(png), filename=f"player_{result.detail.player.id}.png")
         await interaction.followup.send(content=content, file=file, view=view)
