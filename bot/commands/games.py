@@ -253,15 +253,6 @@ class QuizView(discord.ui.View):
         await self._resolve(None, None)
 
 
-QUIZ_KINDS = [
-    app_commands.Choice(name="랜덤", value="random"),
-    app_commands.Choice(name="글 퀴즈", value="text"),
-    app_commands.Choice(name="요원 블라인드", value="agent"),
-    app_commands.Choice(name="무기 블라인드", value="weapon"),
-    app_commands.Choice(name="스킨 이름 맞추기", value="skin"),
-]
-
-
 @app_commands.guild_only()
 class GameCommands(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
@@ -367,10 +358,8 @@ class GameCommands(commands.Cog):
             return
         await interaction.followup.send(embed=embed, files=files, view=view)
 
-    @app_commands.command(name="퀴즈", description=f"VALORANT 퀴즈! 정답이면 {quiz_bank.REWARD} VP (주 {quiz_bank.WEEKLY_LIMIT}회)")
-    @app_commands.describe(종류="글 퀴즈 / 요원·무기 블라인드(실루엣) / 스킨 이름 맞추기")
-    @app_commands.choices(종류=QUIZ_KINDS)
-    async def quiz(self, interaction: discord.Interaction, 종류: app_commands.Choice[str] | None = None) -> None:
+    @app_commands.command(name="퀴즈", description=f"VALORANT 퀴즈(글·블라인드·스킨 랜덤)! 정답이면 {quiz_bank.REWARD} VP (주 {quiz_bank.WEEKLY_LIMIT}회)")
+    async def quiz(self, interaction: discord.Interaction) -> None:
         if not await self._guard(interaction):
             return
         key = (interaction.guild_id, interaction.user.id)
@@ -378,9 +367,7 @@ class GameCommands(commands.Cog):
             await interaction.response.send_message(embed=error_embed("이미 진행 중인 게임이 있어요."), ephemeral=True)
             return
         await interaction.response.defer()
-        kind = 종류.value if 종류 else "random"
-        if kind == "random":
-            kind = random.choice(["text", "agent", "agent", "weapon", "skin"])
+        kind = random.choice(["text", "agent", "agent", "weapon", "skin"])    # 종류는 항상 랜덤
         if kind != "text" and not render_enabled():
             kind = "text"
 
