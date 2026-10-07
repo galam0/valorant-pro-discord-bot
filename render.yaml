@@ -5,10 +5,12 @@
 # 여기서는 DB를 만들지 않고 DATABASE_URL을 직접 입력받습니다.
 services:
   - type: web
-    name: valorant-pro-discord-bot
+    # 리전은 생성 후 변경 불가 → 리전을 바꿀 땐 이름을 바꿔 새 서비스로 만든다
+    name: valorant-pro-discord-bot-us
     runtime: python
     plan: free
-    region: singapore          # 한국과 가장 가까운 리전
+    # singapore 리전 공유 IP가 Discord(Cloudflare 1015)에 차단되어 oregon으로 이전
+    region: oregon
     branch: main
     buildCommand: pip install -r requirements.txt
     startCommand: python -m bot.main
