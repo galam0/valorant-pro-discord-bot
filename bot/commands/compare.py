@@ -9,6 +9,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.autocomplete import team_autocomplete
 from bot.database.database import db
 from bot.embeds.common import COLOR_MAIN, error_embed
 from bot.render.cards import build_compare_card
@@ -38,6 +39,7 @@ class CompareCommands(commands.Cog):
 
     @app_commands.command(name="비교", description="두 팀의 최근 성적·로스터·맞대결을 비교합니다.")
     @app_commands.describe(팀1="첫 번째 팀 (예: T1, 젠지)", 팀2="두 번째 팀 (예: DRX, 농심)")
+    @app_commands.autocomplete(팀1=team_autocomplete, 팀2=team_autocomplete)
     async def compare(self, interaction: discord.Interaction, 팀1: str, 팀2: str) -> None:
         if not db.configured:
             await interaction.response.send_message(embed=error_embed("현재 데이터를 불러올 수 없습니다."), ephemeral=True)

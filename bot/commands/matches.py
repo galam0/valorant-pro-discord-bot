@@ -8,6 +8,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.autocomplete import team_autocomplete
 from bot.database import repository as repo
 from bot.database.database import db
 from bot.embeds.common import error_embed
@@ -24,6 +25,7 @@ class MatchCommands(commands.Cog):
 
     @app_commands.command(name="경기", description="진행 중·예정된 프로 경기를 보여줍니다.")
     @app_commands.describe(팀="특정 팀의 경기만 보기 (선택)")
+    @app_commands.autocomplete(팀=team_autocomplete)
     async def matches(self, interaction: discord.Interaction, 팀: str | None = None) -> None:
         if not db.configured:
             await interaction.response.send_message(embed=error_embed("현재 데이터를 불러올 수 없습니다."), ephemeral=True)
@@ -55,6 +57,7 @@ class MatchCommands(commands.Cog):
 
     @app_commands.command(name="전적", description="팀의 진행 중이거나 최근 경기의 맵별 기록(K/D/A)을 보여줍니다.")
     @app_commands.describe(팀="팀 이름 또는 별칭 (예: T1, 젠지)")
+    @app_commands.autocomplete(팀=team_autocomplete)
     async def record(self, interaction: discord.Interaction, 팀: str) -> None:
         if not db.configured:
             await interaction.response.send_message(embed=error_embed("현재 데이터를 불러올 수 없습니다."), ephemeral=True)

@@ -9,6 +9,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.autocomplete import team_autocomplete
 from bot.database.database import db
 from bot.embeds.common import error_embed
 from bot.embeds.team import team_embed
@@ -25,6 +26,7 @@ class TeamCommands(commands.Cog):
 
     @app_commands.command(name="팀", description="VALORANT 프로팀 정보를 조회합니다.")
     @app_commands.describe(이름="팀 이름 또는 별칭 (예: T1, 젠지, DRX)")
+    @app_commands.autocomplete(이름=team_autocomplete)
     async def team(self, interaction: discord.Interaction, 이름: str) -> None:
         if not db.configured:
             await interaction.response.send_message(embed=error_embed("현재 데이터를 불러올 수 없습니다."), ephemeral=True)

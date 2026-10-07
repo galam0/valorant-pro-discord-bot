@@ -9,6 +9,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.autocomplete import player_autocomplete
 from bot.database.database import db
 from bot.embeds.common import COLOR_INFO, error_embed
 from bot.embeds.player import player_embed
@@ -122,6 +123,7 @@ class PlayerCommands(commands.Cog):
     @app_commands.command(name="선수", description="프로 선수의 요원별 통계(레이팅·ACS·K:D 등)를 보여줍니다.")
     @app_commands.describe(닉네임="선수 닉네임 (예: stax, f0rsakeN). 철자가 조금 달라도 찾아요", 기간="통계 기간 (기본: 최근 90일)")
     @app_commands.choices(기간=TIMESPAN_CHOICES)
+    @app_commands.autocomplete(닉네임=player_autocomplete)
     async def player(self, interaction: discord.Interaction, 닉네임: str,
                      기간: app_commands.Choice[str] | None = None) -> None:
         if not db.configured:

@@ -334,5 +334,18 @@ class PlayerStatsTest(unittest.TestCase):
         self.assertTrue(render_player_stats_card(data, {}).startswith(b"\x89PNG"))
 
 
+class AutocompleteMatchTest(unittest.TestCase):
+    def test_match(self):
+        from bot.autocomplete import _Entry, match
+
+        entries = [_Entry("Gen.G", ["geng", "젠지"]), _Entry("Team Liquid", ["teamliquid", "tl"]),
+                   _Entry("T1", ["t1", "티원"])]
+        self.assertEqual(match(entries, "젠"), ["Gen.G"])
+        self.assertEqual(match(entries, "T"), ["Team Liquid", "T1"])
+        self.assertEqual(match(entries, "liq"), ["Team Liquid"])
+        self.assertEqual(len(match(entries, "")), 3)
+        self.assertEqual(match(entries, "zzz"), [])
+
+
 if __name__ == "__main__":
     unittest.main()

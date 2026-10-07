@@ -9,6 +9,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.autocomplete import event_autocomplete
 from bot.embeds.common import COLOR_MAIN, error_embed
 from bot.render.cards import build_bracket_card
 from bot.scrapers.http import ScrapeError
@@ -81,6 +82,7 @@ class BracketCommands(commands.Cog):
 
     @app_commands.command(name="대진표", description="대회 대진표를 보여줍니다 (예: 챔피언스, 마스터스 런던).")
     @app_commands.describe(대회="대회 이름 (예: 챔피언스, Masters London, 퍼시픽)")
+    @app_commands.autocomplete(대회=event_autocomplete)
     async def bracket(self, interaction: discord.Interaction, 대회: str) -> None:
         await interaction.response.defer(thinking=True)
         try:
