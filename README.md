@@ -75,7 +75,7 @@ python -m bot.main
 | `DATABASE_URL` | Phase 2~ | PostgreSQL 연결 문자열 |
 | `ADMIN_USER_IDS` | | 관리자 사용자 ID (쉼표 구분) |
 | `LOG_LEVEL` | | 기본 `INFO` |
-| `WORKER_TOKEN` | | PC 수집기와 공유하는 비밀값 (ProSettings 허가 후 사용) |
+| `PROSETTINGS_ENABLED` | | ProSettings 수집 (기본 `0`, 허가 전까지 꺼둠) |
 | `SCHEDULER_ENABLED` | | 자동 갱신 사용 (기본 `1`) |
 | `PLAYER_COMMAND_ENABLED` | | `/선수` 공개 여부 (기본 `0` = 관리자만) |
 | `PORT` | | Render가 자동 주입. 있으면 `/health` 서버를 띄움 (로컬에선 비워둠) |
@@ -152,26 +152,15 @@ Render 무료 서버는 리전별로 IP를 여러 서비스가 공유하므로, 
 - 선수 설정은 12시간 캐시합니다. `/선수` 요청 시 저장된 설정이 없거나 12시간이 지났을 때만 가져옵니다.
 - 닉네임 검색은 DB에 저장된 선수(VLR 로스터) 기준으로 오타를 보정한 뒤 해당 선수 페이지를 찾습니다.
 
-## PC 수집기 (ProSettings)
+## ProSettings 상태
 
-ProSettings는 Render 같은 데이터센터 IP의 요청을 차단합니다(robots.txt부터 403).
-그래서 ProSettings 페이지 요청만 **내 PC에서 실행하는 수집기**가 대신 가져와 봇에게 넘겨줍니다.
+ProSettings.net은 Cloudflare로 봇 요청을 막고 있어서(PC에서도 robots.txt부터 403), 현재는 **수집하지 않습니다** (`PROSETTINGS_ENABLED=0`).
+사이트 약관상 서면 허가가 필요해 운영사에 허가를 요청해 두었습니다.
 
-```
-/선수 stax → 봇이 작업 대기 → PC 수집기가 /worker/next 로 받아감 → ProSettings 요청 → HTML을 봇에 전달 → 봇이 DB 저장 후 카드 표시
-```
-
-- PC에는 DB 비밀번호·Discord 토큰이 필요 없습니다. `BOT_URL`, `WORKER_TOKEN`만 설정합니다.
-- PC가 꺼져 있으면 봇은 마지막으로 저장된 설정을 보여주고 "수집 PC가 꺼져 있음"을 안내합니다.
-- 수집기도 robots.txt와 2초 요청 간격을 지키며, prosettings.net 주소만 처리합니다.
-
-### 설정 방법 (윈도우)
-
-1. 무작위 토큰 만들기 (PowerShell): `[guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N")`
-2. Render 환경변수 `WORKER_TOKEN`에 그 값을 넣고 저장 (자동 재배포)
-3. PC에 저장소를 받고 `.env`에 `WORKER_TOKEN`(같은 값)과 `BOT_URL`(Render 주소) 입력
-4. `run_worker.bat` 더블클릭 → "봇과 연결됨"이 뜨면 완료
-5. `/관리 상태`에서 "PC 수집기 🟢 켜짐" 확인
+- `/선수`는 관리자(`ADMIN_USER_IDS`)만 사용할 수 있고, 일반 사용자에게는 "준비 중"을 안내합니다. (`PLAYER_COMMAND_ENABLED=1`로 공개)
+- 선수 설정은 `/관리 선수설정등록`으로 직접 입력할 수 있고, 입력한 값만 `/선수`에 표시됩니다.
+- 허가를 받으면 `PROSETTINGS_ENABLED=1`로 켭니다. 직접 요청이 계속 막히면 예전의 "PC 수집기" 방식(봇이 작업을 대기시키고 내 PC가 대신 가져오는 구조)을
+  git 기록에서 되살릴 수 있습니다: `bot/local_worker.py`, `run_worker.bat` (삭제 커밋 이전 버전). 봇 쪽 `bot/worker_bridge.py`는 남아 있습니다.
 
 ## 자동 갱신 (APScheduler)
 

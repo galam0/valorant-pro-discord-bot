@@ -49,6 +49,10 @@ class Settings:
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO").upper())
     # Render가 주입. 있으면 /health 서버를 띄운다.
     port: int | None = field(default_factory=lambda: _int_or_none("PORT"))
+    # ProSettings 사용 여부 (기본 꺼짐: 사이트 허가를 받기 전에는 요청하지 않는다)
+    prosettings_enabled: bool = field(
+        default_factory=lambda: os.getenv("PROSETTINGS_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
+    )
     # PC 수집기와 봇이 공유하는 비밀값 (설정하면 ProSettings 요청을 PC 수집기에 맡김)
     worker_token: str | None = field(default_factory=lambda: os.getenv("WORKER_TOKEN") or None)
     # PC 수집기가 접속할 봇 주소 (PC 쪽 .env 에서만 사용)

@@ -10,6 +10,7 @@ from datetime import timedelta
 from bot.database import repository as repo
 from bot.database.database import db
 from bot.scrapers.prosettings import PlayerPageNotFound, prosettings
+from bot.utils.config import settings
 from bot.worker_bridge import WorkerUnavailable
 
 log = logging.getLogger("valobot.service.player")
@@ -65,6 +66,12 @@ async def get_player(query: str, *, force: bool = False) -> PlayerResult:
     guessed = query if lookup.guessed else None
     if detail is not None and not force and _fresh(detail):
         return PlayerResult(detail, guessed_from=guessed)
+
+    if not settings.prosettings_enabled:
+        # ProSettings는 꺼져 있음: DB에 있는 정보(관리자가 입력한 설정 포함)만 보여준다
+        if detail is None:
+            raise PlayerNotFound(query, lookup.candidates)
+        return PlayerResult(detail, guessed_from=guessed, no_settings=detail.settings is None)
 
     # ProSettings에서 찾을 이름: DB에서 찾았으면 그 닉네임(또는 저장된 slug), 아니면 검색어 그대로
     name = (detail.player.prosettings_slug or detail.player.nickname) if detail else query

@@ -61,7 +61,8 @@ async def send_player(interaction: discord.Interaction, query: str, *, force: bo
     elif result.fetch_error:
         empty = "ProSettings에서 설정을 가져오지 못했습니다."
     else:
-        empty = "ProSettings에 등록된 설정이 없는 선수입니다."
+        empty = ("아직 등록된 설정이 없는 선수입니다." if not settings.prosettings_enabled
+                 else "ProSettings에 등록된 설정이 없는 선수입니다.")
     png = await build_player_card(result.detail, empty_message=empty)
     if png is not None:
         file = discord.File(BytesIO(png), filename=f"player_{result.detail.player.id}.png")

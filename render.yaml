@@ -25,11 +25,11 @@ services:
         sync: false            # Phase 2에서 Neon 연결 문자열 입력
       - key: ADMIN_USER_IDS
         sync: false
-      - key: WORKER_TOKEN
-        sync: false            # PC 수집기와 공유하는 비밀값
       - key: LOG_LEVEL
         value: INFO
       - key: SCHEDULER_ENABLED
         value: "1"             # 자동 갱신 (경기 1시간 · 진행 중 10분 · 팀 2달에 한 번)
       - key: PLAYER_COMMAND_ENABLED
         value: "0"             # /선수 공개 여부. 0이면 ADMIN_USER_IDS 관리자만 사용 (ProSettings 허가 전)
+      - key: PROSETTINGS_ENABLED
+        value: "0"             # ProSettings 수집 (사이트 허가 전까지 꺼둠)

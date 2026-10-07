@@ -55,7 +55,7 @@ class WorkerBridge:
 
     @property
     def enabled(self) -> bool:
-        return bool(settings.worker_token)
+        return bool(settings.prosettings_enabled and settings.worker_token)
 
     @property
     def online(self) -> bool:
