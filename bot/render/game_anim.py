@@ -69,29 +69,29 @@ def _star(cx, cy, ro, ri, rot=-math.pi / 2):
              cy + (ro if i % 2 == 0 else ri) * math.sin(rot + i * math.pi / 5)) for i in range(10)]
 
 
+COIN_DIR = Path(__file__).resolve().parents[2] / "assets" / "coin"
+
+
 def coin_sprite(face: str, size: int = 210) -> Image.Image:
+    """Fluent Emoji 3D 금화(MIT) 위에 앞면=별, 뒷면=왕관 문양을 얹는다. 파일이 없으면 직접 그린 동전으로 대신한다."""
     key = ("coin", face, size)
     if key in _sprites:
         return _sprites[key]
-    img, d, n = _canvas(size)
-    p = n * 0.03
-    d.ellipse([p, p, n - p, n - p], fill=NAVY)
-    q = n * 0.065
-    d.ellipse([q, q, n - q, n - q], fill=GOLD_M)
-    r = n * 0.15
-    d.ellipse([r, r, n - r, n - r], outline=GOLD_D, width=int(n * 0.025))
-    d.arc([q + n * 0.03, q + n * 0.03, n - q - n * 0.03, n - q - n * 0.03], 200, 260, fill=GOLD_L, width=int(n * 0.035))
-    c = n / 2
-    if face == "앞":
-        d.polygon(_star(c, c + n * 0.015, n * 0.27, n * 0.115), fill=GOLD_D, outline=NAVY, width=int(n * 0.012))
-    else:
-        w, h = n * 0.24, n * 0.14
-        pts = [(c - w, c + h), (c - w, c - h * 0.8), (c - w * 0.5, c), (c, c - h * 1.3), (c + w * 0.5, c), (c + w, c - h * 0.8), (c + w, c + h)]
-        d.polygon(pts, fill=GOLD_D, outline=NAVY, width=int(n * 0.012))
-        for px, py in ((c - w, c - h * 0.8), (c, c - h * 1.3), (c + w, c - h * 0.8)):
-            d.ellipse([px - n * 0.035, py - n * 0.035, px + n * 0.035, py + n * 0.035], fill=GOLD_L, outline=NAVY, width=int(n * 0.01))
-        d.rectangle([c - w, c + h * 0.45, c + w, c + h], fill=NAVY)
-    out = _down(img, size)
+    try:
+        big = 512
+        base = Image.open(COIN_DIR / "coin.png").convert("RGBA").resize((big, big), Image.LANCZOS)
+        inner = tuple(int(c * 0.86) for c in base.getpixel((big // 2, int(big * 0.26)))[:3])   # 안쪽 원판 색(조금 어둡게)으로 기존 문양을 덮는다
+        ImageDraw.Draw(base).ellipse([big * 0.185, big * 0.185, big * 0.815, big * 0.815], fill=inner + (255,))
+        emblem = Image.open(COIN_DIR / ("star.png" if face == "앞" else "crown.png")).convert("RGBA")
+        e = int(big * (0.46 if face == "앞" else 0.56))
+        emblem = emblem.resize((e, e), Image.LANCZOS)
+        base.alpha_composite(emblem, ((big - e) // 2, (big - e) // 2 + int(big * 0.01)))
+        out = base.resize((size, size), Image.LANCZOS)
+    except Exception:
+        out, d, n = _canvas(size)
+        d.ellipse([n * 0.04, n * 0.04, n * 0.96, n * 0.96], fill=GOLD_M, outline=GOLD_D, width=int(n * 0.04))
+        d.text((n / 2, n / 2), face, font=font("heavy", int(n * 0.5)), fill=GOLD_D, anchor="mm")
+        out = _down(out, size)
     _sprites[key] = out
     return out
 
@@ -177,12 +177,12 @@ def _coin_gif(result: str, variant: int = 0) -> bytes:
         theta = math.pi * half_turns * e
         c = math.cos(theta)
         face = "앞" if c >= 0 else "뒤"
-        height = math.sin(math.pi * min(1.0, t * 1.1)) * 52 if t < 0.91 else 0
+        height = math.sin(math.pi * min(1.0, t * 1.1)) * 40 if t < 0.91 else 0
         img = _scene()
         d = ImageDraw.Draw(img)
         sw = 60 - height * 0.25
         d.ellipse([W / 2 - sw, H - 78, W / 2 + sw, H - 58], fill=(22, 31, 44))
-        _coin_at(img, W / 2, H / 2 - 20 - height, c, face)
+        _coin_at(img, W / 2, H / 2 - 12 - height, c, face)
         frames.append(img)
         durs.append(60 + int(70 * t))
     final = frames[-1].copy()
