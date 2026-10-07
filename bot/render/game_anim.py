@@ -251,36 +251,108 @@ def dice_gif(result: int) -> bytes:
 # 슬롯
 # ---------------------------------------------------------------------------
 
+INDIGO, INDIGO_D, INDIGO_L = (52, 46, 112), (34, 30, 80), (78, 70, 150)
+CREAM = (251, 247, 238)
+WIN_W, WIN_H, WIN_GAP, WIN_X, WIN_Y = 116, 156, 12, 94, 92
 _cabinet: Image.Image | None = None
-WIN_W, WIN_H, WIN_GAP, WIN_X, WIN_Y = 108, 150, 14, 103, 82
 
 
 def _cabinet_img() -> Image.Image:
+    """움직이지 않는 부분(본체·릴 창 틀·받침)."""
     global _cabinet
     if _cabinet is not None:
         return _cabinet
-    img = _scene()
+    img = Image.new("RGB", (W, H), (24, 26, 48))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle([64, 8, 496, 312], radius=34, fill=NAVY)
-    d.rounded_rectangle([70, 12, 490, 306], radius=30, fill=(222, 58, 74))
-    d.rounded_rectangle([70, 12, 490, 90], radius=30, fill=(236, 84, 98))
-    d.rounded_rectangle([88, 56, 472, 258], radius=18, fill=NAVY)
-    d.rounded_rectangle([94, 62, 466, 252], radius=14, fill=(255, 214, 95))
-    d.rounded_rectangle([98, 266, 462, 298], radius=12, fill=NAVY)
-    d.rounded_rectangle([102, 270, 458, 294], radius=9, fill=(150, 30, 45))
+    for i in range(-H, W, 60):
+        d.line([(i, H), (i + H, 0)], fill=(28, 30, 54), width=16)
+    d.rounded_rectangle([56, 4, 504, 312], radius=34, fill=(14, 16, 34))            # 외곽선
+    d.rounded_rectangle([62, 8, 498, 308], radius=30, fill=INDIGO)                    # 본체
+    d.rounded_rectangle([62, 8, 498, 74], radius=30, fill=INDIGO_D)                   # 간판
+    d.rectangle([62, 50, 498, 74], fill=INDIGO_D)
+    d.rounded_rectangle([72, 14, 488, 68], radius=16, outline=GOLD_M, width=3)        # 간판 금테
+    d.rounded_rectangle([68, 82, 76, 258], radius=4, fill=INDIGO_L)                   # 옆면 하이라이트
+    d.rounded_rectangle([484, 82, 492, 258], radius=4, fill=INDIGO_L)
+    d.rounded_rectangle([82, 78, 478, 262], radius=20, fill=(14, 16, 34))             # 릴 패널 오목부
+    d.rounded_rectangle([86, 82, 474, 258], radius=17, fill=(24, 24, 58), outline=GOLD_D, width=2)
     for k in range(3):
         x = WIN_X + k * (WIN_W + WIN_GAP)
-        d.rounded_rectangle([x - 5, WIN_Y - 5, x + WIN_W + 5, WIN_Y + WIN_H + 5], radius=12, fill=NAVY)
+        d.rounded_rectangle([x - 4, WIN_Y - 4, x + WIN_W + 4, WIN_Y + WIN_H + 4], radius=12, fill=GOLD_M)
+        d.rounded_rectangle([x - 1, WIN_Y - 1, x + WIN_W + 1, WIN_Y + WIN_H + 1], radius=10, fill=(14, 16, 34))
+    # 하단: 결과 표시창 + 동전 투입구
+    d.rounded_rectangle([86, 268, 474, 300], radius=14, fill=(14, 16, 34))
+    d.rounded_rectangle([90, 271, 220, 297], radius=11, fill=(8, 10, 22))               # LED 창
+    d.rounded_rectangle([262, 281, 302, 289], radius=4, fill=(60, 56, 120))               # 동전 투입구
+    d.rounded_rectangle([322, 281, 462, 289], radius=4, fill=INDIGO_L)
     # 레버 받침
-    d.rounded_rectangle([498, 150, 518, 214], radius=8, fill=NAVY)
-    d.rounded_rectangle([502, 154, 514, 210], radius=5, fill=(180, 190, 205))
+    d.ellipse([504, 176, 532, 204], fill=(14, 16, 34))
+    d.ellipse([508, 180, 528, 200], fill=(170, 178, 200))
     _cabinet = img
     return img
 
 
+def _confetti(d: ImageDraw.ImageDraw, rng: random.Random, n: int = 28) -> None:
+    cols = [GOLD_M, (255, 90, 110), (110, 220, 255), (150, 235, 150), (255, 255, 255)]
+    for _ in range(n):
+        x, y = rng.randint(70, 490), rng.randint(6, 300)
+        c = rng.choice(cols)
+        if rng.random() < 0.5:
+            d.ellipse([x - 4, y - 4, x + 4, y + 4], fill=c)
+        else:
+            d.rectangle([x - 3, y - 6, x + 3, y + 6], fill=c)
+
+
+def _draw_reels(img: Image.Image, reels: list[str], f: int, stops: list[int], seqs, cell: int = 100) -> None:
+    d = ImageDraw.Draw(img)
+    for r in range(3):
+        x = WIN_X + r * (WIN_W + WIN_GAP)
+        win = Image.new("RGBA", (WIN_W, WIN_H), CREAM + (255,))
+        if f >= stops[r]:
+            spr = symbol_sprite(reels[r], 108)
+            win.paste(spr, ((WIN_W - 108) // 2, (WIN_H - 108) // 2), spr)
+        else:
+            off = (f * 57 + r * 29) % cell
+            for k in range(-1, WIN_H // cell + 2):
+                sym = seqs[r][(f * 2 + k + r * 5) % len(seqs[r])]
+                spr = symbol_sprite(sym, 86)
+                y = k * cell + off + (cell - 86) // 2
+                ghost = spr.copy()
+                ghost.putalpha(ghost.getchannel("A").point(lambda v: v // 3))
+                win.paste(ghost, ((WIN_W - 86) // 2, y - 34), ghost)      # 번짐 효과
+                win.paste(spr, ((WIN_W - 86) // 2, y), spr)
+        for i in range(10):                                                  # 위·아래 안쪽 그림자 (부드럽게)
+            a = int(64 * (1 - i / 10) ** 2)
+            band = Image.new("RGBA", (WIN_W, 3), (20, 20, 50, a))
+            win.alpha_composite(band, (0, i * 3))
+            win.alpha_composite(band, (0, WIN_H - (i + 1) * 3))
+        mask = Image.new("L", (WIN_W, WIN_H), 0)
+        ImageDraw.Draw(mask).rounded_rectangle([0, 0, WIN_W - 1, WIN_H - 1], radius=9, fill=255)
+        img.paste(win.convert("RGB"), (x, WIN_Y), mask)
+    cy = WIN_Y + WIN_H // 2
+    d.line([(WIN_X, cy), (WIN_X + 3 * WIN_W + 2 * WIN_GAP, cy)], fill=(255, 90, 100), width=2)
+    d.polygon([(90, cy - 8), (90, cy + 8), (100, cy)], fill=(255, 90, 100))
+    d.polygon([(470, cy - 8), (470, cy + 8), (460, cy)], fill=(255, 90, 100))
+
+
+def _chrome(img: Image.Image, f: int, led: str, led_color, pull: float, glow: bool = False) -> None:
+    d = ImageDraw.Draw(img)
+    d.text((280, 41), "VP  SLOTS", font=font("heavy", 25), fill=GOLD_M, anchor="mm")
+    for b in range(17):                                                       # 간판 전구
+        on = (b + f) % 2 == 0 or glow
+        x = 86 + b * 23.5
+        for y in (22, 60):
+            d.ellipse([x - 3, y - 3, x + 3, y + 3], fill=(255, 244, 190) if on else (120, 104, 60))
+    d.text((155, 284), led, font=font("heavy", 15), fill=led_color, anchor="mm")
+    ky = 186 - 6 - pull * 0 - (1 - pull) * 62 + pull * 46                      # 레버: 위(당기기 전) → 아래
+    d.line([(518, 190), (518, ky)], fill=(170, 178, 200), width=7)
+    d.line([(515, 190), (515, ky)], fill=(210, 216, 232), width=2)
+    d.ellipse([505, ky - 15, 531, ky + 11], fill=(14, 16, 34))
+    d.ellipse([508, ky - 12, 528, ky + 8], fill=(240, 70, 90))
+    d.ellipse([511, ky - 9, 518, ky - 2], fill=(255, 170, 180))
+
+
 def slot_gif(reels: list[str]) -> bytes:
     rng = random.Random()
-    cell = 100
     stops = [14, 20, 26]
     n = 28
     seqs = [[rng.choice(SYMBOL_NAMES) for _ in range(40)] for _ in range(3)]
@@ -288,42 +360,26 @@ def slot_gif(reels: list[str]) -> bytes:
     cab = _cabinet_img()
     for f in range(n):
         img = cab.copy()
-        d = ImageDraw.Draw(img)
-        # 상단 전구 (번갈아 깜빡)
-        for b in range(14):
-            on = (b + f) % 2 == 0
-            x = 98 + b * 26.5
-            d.ellipse([x - 6, 18, x + 6, 30], fill=(255, 236, 130) if on else (170, 40, 56), outline=NAVY, width=2)
-        # 레버: 처음 6프레임 동안 아래로 당겼다가 올라옴
-        pull = min(f, 5) / 5 if f < 10 else max(0, 1 - (f - 10) / 4)
-        ky = 120 + pull * 70
-        d.line([(508, 160), (508, ky)], fill=(180, 190, 205), width=8)
-        d.ellipse([496, ky - 16, 520, ky + 8], fill=(255, 224, 70), outline=NAVY, width=3)
-        for r in range(3):
-            x = WIN_X + r * (WIN_W + WIN_GAP)
-            reel = Image.new("RGB", (WIN_W, WIN_H), (252, 249, 240))
-            if f >= stops[r]:
-                spr = symbol_sprite(reels[r], 104)
-                reel.paste(spr, ((WIN_W - 104) // 2, (WIN_H - 104) // 2), spr)
-            else:
-                off = (f * 53 + r * 31) % cell
-                for k in range(-1, WIN_H // cell + 2):
-                    sym = seqs[r][(f * 2 + k + r * 5) % len(seqs[r])]
-                    spr = symbol_sprite(sym, 84)
-                    reel.paste(spr, ((WIN_W - 84) // 2, k * cell + off + (cell - 84) // 2), spr)
-                veil = Image.new("RGBA", (WIN_W, WIN_H), (255, 255, 255, 70))
-                reel = Image.alpha_composite(reel.convert("RGBA"), veil).convert("RGB")
-            img.paste(reel, (x, WIN_Y))
-        d.line([(WIN_X - 5, WIN_Y + WIN_H // 2), (WIN_X + 3 * WIN_W + 2 * WIN_GAP + 5, WIN_Y + WIN_H // 2)], fill=(222, 58, 74), width=3)
-        d.text((280, 45), "SLOT", font=font("heavy", 20), fill=(255, 245, 220), anchor="mm")
+        _draw_reels(img, reels, f, stops, seqs)
+        pull = min(f, 4) / 4 if f < 9 else max(0.0, 1 - (f - 9) / 4)
+        _chrome(img, f, "SPIN..." if f < stops[2] else "", GOLD_M, pull)
         frames.append(img)
         durs.append(70 if f < stops[0] else 110)
-    final = frames[-1].copy()
-    d = ImageDraw.Draw(final)
-    label, col = (("JACKPOT!", (200, 30, 50)) if reels[0] == reels[1] == reels[2] else
-                  (("2개 일치", NAVY) if len(set(reels)) == 2 else ("꽝", (120, 120, 130))))
-    d.rounded_rectangle([195, 34, 365, 57], radius=11, fill=(255, 214, 95), outline=NAVY, width=2)
-    d.text((280, 46), label, font=font("heavy", 20), fill=col, anchor="mm")
+    jackpot = reels[0] == reels[1] == reels[2]
+    pair = len(set(reels)) == 2
+    label, col = (("JACKPOT!", GOLD_M) if jackpot else (("2 MATCH", (150, 235, 150)) if pair else ("TRY AGAIN", (150, 150, 180))))
+    if jackpot or pair:                         # 당첨 연출: 창 테두리와 전구가 번쩍이고 색종이가 흩날린다
+        for k in range(4 if jackpot else 2):
+            img = cab.copy()
+            _draw_reels(img, reels, 99, stops, seqs)
+            _chrome(img, k, label, col, 0.0, glow=(k % 2 == 0))
+            if jackpot:
+                _confetti(ImageDraw.Draw(img), rng)
+            frames.append(img)
+            durs.append(170)
+    final = cab.copy()
+    _draw_reels(final, reels, 99, stops, seqs)
+    _chrome(final, 0, label, col, 0.0, glow=jackpot)
     frames.append(final)
     durs.append(3000)
     return gif_bytes(frames, durs)
