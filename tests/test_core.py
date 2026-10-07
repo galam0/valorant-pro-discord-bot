@@ -647,5 +647,30 @@ class TeamMapsTest(unittest.TestCase):
         self.assertTrue(png.startswith(b"\x89PNG"))
 
 
+class GameAnimTest(unittest.TestCase):
+    def test_gifs_render(self):
+        from bot.render import game_anim as g
+        for gif in (g.coin_gif("앞"), g.coin_gif("뒤"), g.dice_gif(3), g.slot_gif(["🍒", "🍋", "💎"]),
+                    g.deal_gif(["A♠", "K♥"], ["9♦", "7♣"]), g.finish_gif(["A♠", "K♥", "5♣"], ["10♦", "6♣", "9♥"])):
+            self.assertTrue(gif.startswith(b"GIF8"))
+            self.assertLess(len(gif), 1_000_000)
+
+    def test_table_and_quiz_image(self):
+        from PIL import Image
+        from bot.render import game_anim as g
+        self.assertTrue(g.table_png(["A♠", "K♥"], ["9♦", "7♣"], True).startswith(b"\x89PNG"))
+        art = Image.new("RGBA", (200, 300), (0, 0, 0, 0))
+        art.paste((255, 0, 0, 255), (50, 50, 150, 250))
+        self.assertTrue(g.quiz_image(art, silhouette=True).startswith(b"\x89PNG"))
+        self.assertTrue(g.quiz_image(art, silhouette=False, caption="제트").startswith(b"\x89PNG"))
+
+    def test_quiz_options(self):
+        import random
+        from bot.services import quiz_assets
+        opts, idx = quiz_assets._opts("제트", ["제트", "오멘", "소바", "세이지", "킬조이"], random.Random(1))
+        self.assertEqual(len(set(opts)), 4)
+        self.assertEqual(opts[idx], "제트")
+
+
 if __name__ == "__main__":
     unittest.main()

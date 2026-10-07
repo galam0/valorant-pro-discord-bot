@@ -102,6 +102,42 @@ async def fetch_image(url: str | None) -> Image.Image | None:
     return img
 
 
+def _decode_big(raw: bytes, size: int) -> Image.Image | None:
+    try:
+        img = Image.open(BytesIO(raw))
+        img.load()
+        img = img.convert("RGBA")
+        img.thumbnail((size, size), Image.LANCZOS)
+        return img
+    except Exception:
+        return None
+
+
+_BIG_CACHE: "OrderedDict[str, Image.Image]" = OrderedDict()
+
+
+async def fetch_big(url: str | None, size: int = 640) -> Image.Image | None:
+    """퀴즈 그림처럼 크게 쓰는 이미지 (작은 캐시 40장). 실패하면 None."""
+    if not url or not url.startswith("https://"):
+        return None
+    if url in _BIG_CACHE:
+        _BIG_CACHE.move_to_end(url)
+        return _BIG_CACHE[url]
+    async with _SEM:
+        state, raw = await _download(url)
+        if state == "retry":
+            await asyncio.sleep(0.5)
+            state, raw = await _download(url)
+    if raw is None:
+        return None
+    img = await asyncio.to_thread(_decode_big, raw, size)
+    if img is not None:
+        _BIG_CACHE[url] = img
+        if len(_BIG_CACHE) > 40:
+            _BIG_CACHE.popitem(last=False)
+    return img
+
+
 async def fetch_many(urls: dict[str, str | None]) -> dict[str, Image.Image | None]:
     keys = list(urls)
     t0 = time.perf_counter()
