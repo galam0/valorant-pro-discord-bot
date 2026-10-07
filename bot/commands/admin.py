@@ -20,6 +20,7 @@ from bot.embeds.common import COLOR_INFO, COLOR_OK, error_embed, ts
 from bot.scrapers.http import ScrapeError
 from bot.scrapers.vlr import ParseError
 from bot.services import match_service, team_service
+from bot import scheduler
 from bot.utils.aliases import MAJOR_TEAMS
 from bot.utils.config import settings
 from bot.worker_bridge import bridge
@@ -222,6 +223,17 @@ class AdminGroup(app_commands.Group, name="관리", description="관리자 전�
         if bridge.enabled:
             worker = f"🟢 켜짐 ({bridge.worker_name}) · 처리 {bridge.completed}건" if bridge.online else "💤 꺼짐"
             embed.add_field(name="PC 수집기", value=worker)
+
+        runs_next = scheduler.next_runs()
+        if runs_next:
+            names = {"matches": "경기 목록", "live": "진행 중 경기", "teams": "팀 정보"}
+            embed.add_field(
+                name="자동 갱신 (다음 실행)",
+                value="\n".join(f"{names.get(k, k)} · {v}" for k, v in runs_next.items()),
+                inline=False,
+            )
+        elif scheduler.enabled():
+            embed.add_field(name="자동 갱신", value="⚪ 시작 안 됨", inline=False)
 
         if not db.configured:
             embed.add_field(name="DB", value="⚪ 설정 안 됨", inline=False)

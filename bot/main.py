@@ -14,6 +14,7 @@ import discord
 from aiohttp import web
 from discord.ext import commands
 
+from bot import scheduler
 from bot.commands import EXTENSIONS, install_error_handler
 from bot.database.database import db
 from bot.render import images as card_images
@@ -219,8 +220,10 @@ async def amain(token: str) -> None:
         await health.start(settings.port)
     try:
         await init_database()
+        scheduler.start()
         await run_forever(token, health)
     finally:
+        scheduler.stop()
         await http_client.close()
         await card_images.close()
         await db.dispose()
