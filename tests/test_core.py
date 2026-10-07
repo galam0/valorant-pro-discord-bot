@@ -12,7 +12,7 @@ from bot.render.compare_card import render_compare_card
 from bot.render.player_card import render_player_card
 from bot.render.ranking_card import render_ranking_card
 from bot.render.bracket_card import render_bracket_card
-from bot.scrapers.vlr import ParseError, parse_event_bracket, parse_player_page, parse_rankings, parse_search_events
+from bot.scrapers.vlr import parse_match_odds, ParseError, parse_event_bracket, parse_player_page, parse_rankings, parse_search_events
 from bot.render.schedule_card import render_schedule_card
 from bot.render.player_stats_card import player_stats_data, render_player_stats_card
 from bot.services.ranking_service import _tokens, is_first_team
@@ -454,6 +454,100 @@ class PlayerCompareTest(unittest.TestCase):
         self.assertTrue(png.startswith(b"\x89PNG"))
 
 
+def _bet(o1, o2, note="Pre-match"):
+    return (f'<a href="/rr/bet/1" class="wf-card mod-dark match-bet-item"><div class="match-bet-item-half mod-1">'
+            f'<span class="match-bet-item-team-name">A</span><span class="match-bet-item-odds mod- mod-1">{o1}</span></div>'
+            f'<div class="match-bet-item-half mod-2"><span class="match-bet-item-odds mod- mod-2">{o2}</span>'
+            f'<span class="match-bet-item-team-name">B</span><div class="match-bet-item-note">{note}</div></div></a>')
+
+
+class OddsParseTest(unittest.TestCase):
+    def test_average_and_probability(self):
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(_bet("1.44", "2.66") + _bet("1.44", "2.66") + _bet("1.40", "2.88"), "html.parser")
+        o = parse_match_odds(soup)
+        self.assertEqual((o.team1_odds, o.team2_odds, o.sources), (1.43, 2.73, 3))
+        self.assertTrue(0.6 < o.p1 < 0.7)   # 1.43 쪽이 우세
+
+    def test_ignores_live_and_garbage(self):
+        from bs4 import BeautifulSoup
+
+        self.assertIsNone(parse_match_odds(BeautifulSoup(_bet("1.1", "5.0", "Live"), "html.parser")))
+        self.assertIsNone(parse_match_odds(BeautifulSoup(_bet("-", "x"), "html.parser")))
+        self.assertIsNone(parse_match_odds(BeautifulSoup("<div></div>", "html.parser")))
+
+
+class OddsModelTest(unittest.TestCase):
+    def test_wins_needed(self):
+        from bot.services.odds_model import wins_needed
+
+        self.assertEqual([wins_needed(x) for x in ("BO1", "BO3", "BO5", None, "")], [1, 2, 3, None, None])
+
+    def test_map_prob_roundtrip(self):
+        from bot.services.odds_model import map_win_prob, series_win_prob
+
+        for n in (2, 3):
+            for p in (0.2, 0.5, 0.68, 0.9):
+                self.assertAlmostEqual(series_win_prob(map_win_prob(p, n), n), p, places=6)
+
+    def test_score_options_probabilities_sum_to_one(self):
+        from bot.services.odds_model import HOUSE_EDGE, score_options
+
+        for bo, count in (("BO3", 4), ("BO5", 6)):
+            opts = score_options(0.65, bo)
+            self.assertEqual(len(opts), count)
+            # 배율 = 0.95/확률 → 확률 합이 1 이어야 한다 (상·하한에 걸린 항목이 없는 범위)
+            self.assertAlmostEqual(sum((1 - HOUSE_EDGE) / m for _, m in opts), 1.0, delta=0.08)
+        self.assertEqual(score_options(0.5, "BO1"), [])
+        favorite = dict(score_options(0.8, "BO3"))
+        self.assertLess(favorite["2-0"], favorite["0-2"])   # 우세 팀의 2:0 이 더 낮은 배율
+
+    def test_mvp_multiplier(self):
+        from bot.services.odds_model import mvp_multiplier
+
+        self.assertLess(mvp_multiplier(0.8), mvp_multiplier(0.5))   # 우세 팀 선수가 낮은 배율
+        self.assertLess(mvp_multiplier(0.5), mvp_multiplier(0.2))
+        self.assertTrue(3.0 <= mvp_multiplier(0.99) <= 30.0)
+
+    def test_build_odds_fallback_and_payout(self):
+        from bot.services.odds_model import build_odds, payout
+
+        o = build_odds(None)
+        self.assertEqual((o.winner, o.from_vlr, o.team1_p), ((1.9, 1.9), False, 0.5))
+        self.assertEqual(payout(100, 1.43), 143)
+        self.assertEqual(payout(15, 1.9), 28)   # 28.5 → 버림
+
+    def test_betting_state(self):
+        from datetime import datetime, timedelta, timezone
+
+        from bot.services.odds_model import betting_state
+
+        start = datetime(2026, 10, 8, 12, 0, tzinfo=timezone.utc)
+        at = lambda m: betting_state(start + timedelta(minutes=m), start, "upcoming")  # noqa: E731
+        self.assertEqual((at(-60), at(-10.01), at(-10), at(-1), at(0), at(5)), ("open", "open", "locked", "locked", "started", "started"))
+        self.assertEqual(betting_state(start, start, "live"), "started")
+        self.assertEqual(betting_state(start, None, "upcoming"), "unknown")
+
+    def test_mvp_and_settle(self):
+        from bot.services.odds_model import mvp_of, settle_outcome
+
+        P = lambda n, r, a: NS(name=n, rating=r, acs=a)  # noqa: E731
+        stats = [[P("Meteor", "1.20", "250"), P("aspas", "1.20", "260")], [P("Derrek", "1.05", "200"), P("x", None, None)]]
+        self.assertEqual(mvp_of(stats), "aspas")      # 레이팅 동률 → ACS
+        self.assertIsNone(mvp_of([]))
+        self.assertIsNone(mvp_of([[P("a", "-", "-")]]))
+        r = dict(score1=2, score2=1, mvp="aspas")
+        self.assertEqual(settle_outcome("winner", "1", **r), "won")
+        self.assertEqual(settle_outcome("winner", "2", **r), "lost")
+        self.assertEqual(settle_outcome("score", "2-1", **r), "won")
+        self.assertEqual(settle_outcome("score", "2-0", **r), "lost")
+        self.assertEqual(settle_outcome("mvp", "ASPAS", **r), "won")
+        self.assertEqual(settle_outcome("mvp", "Meteor", **r), "lost")
+        self.assertEqual(settle_outcome("mvp", "Meteor", score1=2, score2=1, mvp=None), "void")
+        self.assertEqual(settle_outcome("winner", "1", score1=None, score2=None, mvp=None), "void")
+
+
 class CommandStructureTest(unittest.TestCase):
     def test_commands_are_class_methods(self):
         """명령어 함수가 setup() 안에 잘못 들어가면(들여쓰기 실수) 봇이 시작 때 죽는다."""
@@ -466,6 +560,22 @@ class CommandStructureTest(unittest.TestCase):
                 if isinstance(node, ast.AsyncFunctionDef) and node.name == "setup":
                     nested = [n.name for n in ast.walk(node) if isinstance(n, ast.AsyncFunctionDef) and n is not node]
                     self.assertEqual(nested, [], path)
+
+
+class EconomyCommandsTest(unittest.TestCase):
+    def test_new_commands_registered_and_named_lowercase(self):
+        import ast
+        tree = ast.parse(open("bot/commands/economy.py", encoding="utf-8").read())
+        names = []
+        for n in ast.walk(tree):
+            if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "command":
+                for k in n.keywords:
+                    if k.arg == "name":
+                        names.append(k.value.value)
+        self.assertEqual(set(names), {"vp", "출석", "vp랭킹", "예측", "내예측"})
+        for nm in names:
+            self.assertEqual(nm, nm.lower())
+        self.assertIn("bot.commands.economy", open("bot/commands/__init__.py", encoding="utf-8").read())
 
 
 if __name__ == "__main__":

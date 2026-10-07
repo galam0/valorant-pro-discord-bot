@@ -17,6 +17,9 @@
   equipment        장비 (ProSettings)
   crosshairs       크로스헤어 (ProSettings)
   scrape_runs      수집 실행 기록 (/관리 상태 용)
+  wallets          서버별 VP 지갑 (guild_id, user_id)
+  wallet_ledger    VP 입출금 기록 (잔액이 맞는지 추적용)
+  predictions      경기 예측 (승패/스코어/MVP)
 """
 
 from __future__ import annotations
@@ -27,6 +30,7 @@ from typing import Any
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -307,3 +311,64 @@ class ScrapeRun(Base):
 # 대소문자 무시 검색용 함수 인덱스 (클래스 정의 후에 컬럼을 참조해야 함)
 Index("ix_teams_name_lower", func.lower(Team.name))
 Index("ix_players_nickname_lower", func.lower(Player.nickname))
+
+
+# ---------------------------------------------------------------------------
+# VP 지갑 · 예측 게임 (가상 재화, 현금 가치 없음)
+# ---------------------------------------------------------------------------
+
+
+class Wallet(TimestampMixin, Base):
+    """서버(guild)별 VP 지갑. 같은 사람도 서버마다 잔액이 따로다."""
+
+    __tablename__ = "wallets"
+
+    guild_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    balance: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    last_checkin_date: Mapped[Any | None] = mapped_column(Date)   # 마지막 출석 날짜 (한국 시간 기준)
+
+
+class WalletLedger(Base):
+    """잔액이 바뀔 때마다 한 줄씩 남긴다. 합계가 안 맞으면 여기서 원인을 찾는다."""
+
+    __tablename__ = "wallet_ledger"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    delta: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    balance_after: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    reason: Mapped[str] = mapped_column(String(30), nullable=False)   # welcome/checkin/bet/refund/payout/admin
+    ref: Mapped[str | None] = mapped_column(String(60))               # 예: prediction:123
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (Index("ix_wallet_ledger_user", "guild_id", "user_id", "created_at"),)
+
+
+class Prediction(Base):
+    """경기 예측 한 건. 걸 때의 배율(odds)을 저장해 두므로 나중에 배당이 바뀌어도 영향 없다."""
+
+    __tablename__ = "predictions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)       # winner / score / mvp
+    pick: Mapped[str] = mapped_column(String(120), nullable=False)      # winner: '1'|'2', score: '2-1'(팀1-팀2), mvp: 선수 이름
+    pick_label: Mapped[str] = mapped_column(String(160), nullable=False)  # 화면 표시용 (예: 'T1 승', 'T1 2:1', 'Meteor')
+    stake: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    odds: Mapped[float] = mapped_column(Float, nullable=False)
+    status: Mapped[str] = mapped_column(String(12), nullable=False, server_default="open")  # open/won/lost/void/cancelled
+    payout: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    match: Mapped[Match] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint("guild_id", "user_id", "match_id", "kind", name="uq_predictions_one_per_kind"),
+        Index("ix_predictions_match_status", "match_id", "status"),
+        Index("ix_predictions_user", "guild_id", "user_id", "status"),
+    )

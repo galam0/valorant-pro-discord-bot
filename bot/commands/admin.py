@@ -20,6 +20,7 @@ from bot.database.database import db
 from bot.embeds.common import COLOR_INFO, COLOR_OK, error_embed, ts
 from bot.scrapers.http import ScrapeError
 from bot.scrapers.vlr import ParseError
+from bot.services import economy_service as eco_service
 from bot.services import emoji_service, match_service, team_service
 from bot import scheduler
 from bot.utils.aliases import MAJOR_TEAMS
@@ -385,6 +386,35 @@ class AdminGroup(app_commands.Group, name="관리", description="관리자 전�
             ]
             embed.add_field(name="최근 수집", value="\n".join(lines)[:1024], inline=False)
         await interaction.followup.send(embed=embed)
+
+
+    @app_commands.command(name="vp현황", description="모든 서버의 VP 현황을 봅니다. (봇 제작자 전용)")
+    async def vp_overview(self, interaction: discord.Interaction) -> None:
+        if interaction.user.id not in settings.admin_user_ids:
+            await interaction.response.send_message(embed=error_embed("봇 제작자(ADMIN_USER_IDS)만 볼 수 있어요."), ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        rows = await eco_service.all_guild_totals()
+        lines = []
+        for gid, users, total, top in rows[:25]:
+            guild = self.bot.get_guild(gid)
+            lines.append(f"**{guild.name if guild else gid}** (`{gid}`) · 유저 {users}명 · 합계 {eco_service.fmt(total)} · 최고 {eco_service.fmt(top)}")
+        embed = discord.Embed(title="💰 서버별 VP 현황", description="\n".join(lines) or "아직 지갑이 없어요.", color=COLOR_INFO)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="vp지급", description="유저에게 VP를 지급하거나 회수합니다. (봇 제작자 전용)")
+    @app_commands.describe(유저="대상 유저", 금액="지급할 VP (음수면 회수)")
+    async def vp_grant(self, interaction: discord.Interaction, 유저: discord.Member, 금액: app_commands.Range[int, -1_000_000, 1_000_000]) -> None:
+        if interaction.user.id not in settings.admin_user_ids:
+            await interaction.response.send_message(embed=error_embed("봇 제작자(ADMIN_USER_IDS)만 사용할 수 있어요."), ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        try:
+            bal = await eco_service.admin_grant(interaction.guild_id, 유저.id, 금액)
+        except Exception as exc:
+            await interaction.followup.send(embed=error_embed(f"처리하지 못했어요 (잔액 부족 등): {type(exc).__name__}"), ephemeral=True)
+            return
+        await interaction.followup.send(f"✅ {유저.mention} 에게 {금액:+,} VP · 현재 {eco_service.fmt(bal)}", ephemeral=True)
 
 
 _background_tasks: set[asyncio.Task[None]] = set()

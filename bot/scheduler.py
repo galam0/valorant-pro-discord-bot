@@ -21,7 +21,7 @@ import os
 
 from bot.database.database import db
 from bot.scrapers.vlr import vlr
-from bot.services import match_service, team_service
+from bot.services import match_service, prediction_service, team_service
 
 log = logging.getLogger("valobot.scheduler")
 
@@ -51,8 +51,17 @@ async def job_matches() -> None:
     try:
         count = await match_service.refresh_matches(include_results=True)
         log.info("[자동] 경기 목록 갱신: %d개", count)
+        await _settle_sweep()
     except Exception as exc:
         log.warning("[자동] 경기 목록 갱신 실패: %s: %s", type(exc).__name__, exc)
+
+
+async def _settle_sweep() -> None:
+    """열린 예측이 남은 끝난 경기를 정산 (놓친 경기 보완). 경기 목록 갱신 직후라 DB는 이미 깨어 있다."""
+    try:
+        await prediction_service.settle_finished()
+    except Exception as exc:
+        log.warning("[자동] 예측 정산 실패: %s: %s", type(exc).__name__, exc)
 
 
 async def job_live() -> None:
@@ -79,6 +88,11 @@ async def job_live() -> None:
         except Exception as exc:
             log.warning("[자동] 경기 상세 저장 실패 (%s): %s: %s", vlr_id, type(exc).__name__, exc)
     log.info("[자동] 진행 중 %d경기 · 방금 종료 %d경기 → 상세 %d건 저장", len(live), len(just_ended), saved)
+    for vlr_id in just_ended[:MAX_LIVE_DETAILS]:     # 방금 끝난 경기는 바로 예측 정산 (DB는 이미 깨어 있음)
+        try:
+            await prediction_service.settle_match(vlr_id)
+        except Exception as exc:
+            log.warning("[자동] 예측 정산 실패 (%s): %s: %s", vlr_id, type(exc).__name__, exc)
 
 
 async def job_teams() -> None:

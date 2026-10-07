@@ -19,6 +19,7 @@ EXTENSIONS = (
     "bot.commands.ranking",
     "bot.commands.compare",
     "bot.commands.bracket",
+    "bot.commands.economy",
     "bot.commands.admin",
 )
 

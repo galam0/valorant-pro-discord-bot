@@ -150,6 +150,22 @@ class MatchDetail:
     team1: MatchTeamRef | None
     team2: MatchTeamRef | None
     event: EventRef | None
+    odds: "MatchOdds | None" = None   # 경기 전 배당 (예측 게임용)
+
+
+@dataclass
+class MatchOdds:
+    """경기 페이지 'Betting' 칸의 경기 전(pre-match) 배당. 여러 곳의 값을 평균낸다.
+
+    우리 봇은 가상 재화(VP) 게임에만 쓰고, 배당 사이트 이름·광고는 표시하지 않는다.
+    team1_odds/team2_odds: 사이트 배당의 평균 (예: 1.43 / 2.73) → 승패 배율로 그대로 사용
+    p1: 배당에서 수수료(오버라운드)를 걷어낸 팀1 승리 확률 (스코어·MVP 배율 계산용)
+    """
+
+    team1_odds: float
+    team2_odds: float
+    p1: float
+    sources: int
 
 
 # ---------------------------------------------------------------------------
@@ -440,6 +456,28 @@ def parse_matches_list(html: str) -> list[MatchListItem]:
     return items
 
 
+def parse_match_odds(soup: BeautifulSoup) -> MatchOdds | None:
+    """a.match-bet-item (.mod-1/.mod-2 의 .match-bet-item-odds). 경기 전 배당만, 비정상 값은 버린다."""
+    pairs: list[tuple[float, float]] = []
+    for item in soup.select("a.match-bet-item"):
+        note = _text(item.select_one(".match-bet-item-note")).lower()
+        if note and "pre" not in note:      # 'Live' 배당은 경기 중 값이라 제외
+            continue
+        o1 = _num(_text(item.select_one(".match-bet-item-odds.mod-1")))
+        o2 = _num(_text(item.select_one(".match-bet-item-odds.mod-2")))
+        if o1 and o2 and o1 > 1.0 and o2 > 1.0:
+            pairs.append((o1, o2))
+    if not pairs:
+        return None
+    probs = [(1 / a) / ((1 / a) + (1 / b)) for a, b in pairs]
+    return MatchOdds(
+        team1_odds=round(sum(a for a, _ in pairs) / len(pairs), 2),
+        team2_odds=round(sum(b for _, b in pairs) / len(pairs), 2),
+        p1=sum(probs) / len(probs),
+        sources=len(pairs),
+    )
+
+
 def parse_match_page(html: str, vlr_id: int) -> MatchDetail:
     soup = _soup(html)
 
@@ -488,6 +526,7 @@ def parse_match_page(html: str, vlr_id: int) -> MatchDetail:
         team1=teams[0] if len(teams) > 0 else None,
         team2=teams[1] if len(teams) > 1 else None,
         event=event,
+        odds=parse_match_odds(soup),
     )
 
 
