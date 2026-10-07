@@ -192,6 +192,65 @@ class BracketTest(unittest.TestCase):
         self.assertTrue(render_bracket_card(data, {}).startswith(PNG))
 
 
+class ImageFetchTest(unittest.TestCase):
+    """이미지는 조각조각 와도 끝까지 받고, 일시 오류는 다시 시도하고, 404만 캐시한다."""
+
+    def test_chunked_retry_and_cache(self):
+        from io import BytesIO
+
+        from PIL import Image
+
+        from bot.render import images
+
+        buf = BytesIO()
+        Image.new("RGB", (300, 300), (200, 10, 10)).save(buf, "PNG")
+        data, calls = buf.getvalue(), {"n": 0}
+
+        class Resp:
+            def __init__(self, status, body=b""):
+                self.status, self.body, self.content = status, body, self
+
+            async def iter_chunked(self, n):
+                for i in range(0, len(self.body), 1000):
+                    yield self.body[i:i + 1000]
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+        class Sess:
+            def get(self, url):
+                calls["n"] += 1
+                if "flaky" in url and calls["n"] == 1:
+                    return Resp(503)
+                return Resp(404) if "gone" in url else Resp(200, data)
+
+        async def fake_session():
+            return Sess()
+
+        images._CACHE.clear()
+        old = images._get_session
+        images._get_session = fake_session
+        try:
+            async def run():
+                full = await images.fetch_image("https://x/a.png")
+                calls["n"] = 0
+                flaky = await images.fetch_image("https://x/flaky.png")
+                gone = await images.fetch_image("https://x/gone.png")
+                return full, flaky, gone, calls["n"]
+
+            full, flaky, gone, n = asyncio.run(run())
+        finally:
+            images._get_session = old
+        self.assertIsNotNone(full)
+        self.assertIsNotNone(flaky)   # 첫 요청 503 → 재시도로 성공
+        self.assertIsNone(gone)
+        self.assertIn("https://x/gone.png", images._CACHE)       # 404는 캐시
+        self.assertNotIn("https://x/flaky.png-none", images._CACHE)
+
+
 class SchedulerLiveJobTest(unittest.TestCase):
     def test_live_then_ended_then_idle(self):
         scheduler = _import_scheduler()

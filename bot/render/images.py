@@ -32,7 +32,7 @@ async def _get_session() -> aiohttp.ClientSession:
     global _session
     if _session is None or _session.closed:
         _session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=8),
+            timeout=aiohttp.ClientTimeout(total=15),
             headers={"User-Agent": USER_AGENT},
         )
     return _session
@@ -54,6 +54,28 @@ def _decode(raw: bytes) -> Image.Image | None:
         return None
 
 
+async def _download(url: str) -> tuple[str, bytes | None]:
+    """('ok', 바이트) / ('missing', None: 404 등 영구 실패) / ('retry', None: 일시 오류)"""
+    try:
+        session = await _get_session()
+        async with session.get(url) as resp:
+            if resp.status == 200:
+                # StreamReader.read(n) 은 지금 버퍼에 있는 만큼만 돌려줘서 이미지가 잘릴 수 있다 → 끝까지 이어 받는다
+                raw = bytearray()
+                async for chunk in resp.content.iter_chunked(65536):
+                    raw += chunk
+                    if len(raw) > MAX_BYTES:
+                        return "missing", None
+                return "ok", bytes(raw)
+            if resp.status in (404, 410):
+                return "missing", None
+            log.warning("이미지 응답 %s: %s", resp.status, url)
+            return "retry", None
+    except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+        log.warning("이미지 다운로드 실패: %s (%s: %s)", url, type(exc).__name__, exc)
+        return "retry", None
+
+
 async def fetch_image(url: str | None) -> Image.Image | None:
     if not url or not url.startswith(("https://", "http://")):
         return None
@@ -61,23 +83,20 @@ async def fetch_image(url: str | None) -> Image.Image | None:
         _CACHE.move_to_end(url)
         return _CACHE[url]
 
-    img: Image.Image | None = None
     async with _SEM:
-        try:
-            session = await _get_session()
-            async with session.get(url) as resp:
-                if resp.status == 200:
-                    raw = await resp.content.read(MAX_BYTES + 1)
-                    if len(raw) <= MAX_BYTES:
-                        img = await asyncio.to_thread(_decode, raw)
-                elif resp.status != 404:
-                    log.debug("이미지 응답 %s: %s", resp.status, url)
-                    return None  # 일시 오류는 캐시하지 않음
-        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-            log.debug("이미지 다운로드 실패: %s (%s)", url, exc)
-            return None
+        state, raw = await _download(url)
+        if state == "retry":  # 일시 오류는 한 번 더 시도
+            await asyncio.sleep(0.5)
+            state, raw = await _download(url)
 
-    _CACHE[url] = img  # 404·깨진 이미지는 None으로 캐시해서 반복 요청 방지
+    if state == "retry":
+        return None  # 캐시하지 않음 → 다음 요청 때 다시 시도
+    img = await asyncio.to_thread(_decode, raw) if raw is not None else None
+    if raw is not None and img is None:
+        log.warning("이미지를 읽지 못했습니다 (깨진 파일?): %s", url)
+        return None  # 이것도 캐시하지 않음 (한 번 실패했다고 영원히 빈 칸이 되지 않게)
+
+    _CACHE[url] = img  # 404 등 확실히 없는 이미지만 None으로 캐시
     if len(_CACHE) > _CACHE_MAX:
         _CACHE.popitem(last=False)
     return img
