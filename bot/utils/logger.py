@@ -20,6 +20,8 @@ def setup_logging(level: str = "INFO") -> None:
     # SQL 문장 로그는 너무 많으므로 경고 이상만
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("alembic").setLevel(logging.INFO)
+    # 시작할 때마다 나오는 'setup plugin ...' 안내 숨김
+    logging.getLogger("alembic.runtime.plugins").setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> logging.Logger:

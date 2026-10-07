@@ -12,10 +12,11 @@ import time
 
 import discord
 from aiohttp import web
-from discord import app_commands
 from discord.ext import commands
 
+from bot.commands import EXTENSIONS, install_error_handler
 from bot.database.database import db
+from bot.scrapers.http import http_client
 from bot.utils.config import settings
 from bot.utils.logger import setup_logging
 
@@ -25,8 +26,6 @@ logger = logging.getLogger("valobot")
 # Discord(Cloudflare) 429 차단 시 재시도 대기 시간 (초)
 RETRY_BASE_DELAY = 60
 RETRY_MAX_DELAY = 30 * 60
-
-EMBED_COLOR = discord.Color.from_rgb(255, 70, 85)  # VALORANT 레드
 
 
 # ---------------------------------------------------------------------------
@@ -132,8 +131,10 @@ class ValorantBot(commands.Bot):
         super().__init__(command_prefix=commands.when_mentioned, intents=intents)
 
     async def setup_hook(self) -> None:
-        """로그인 직후 1회 실행. Slash Command를 Discord에 동기화한다."""
-        register_commands(self.tree)
+        """로그인 직후 1회 실행. 명령어(Cog)를 불러오고 Discord에 동기화한다."""
+        install_error_handler(self.tree)
+        for ext in EXTENSIONS:
+            await self.load_extension(ext)
 
         if settings.dev_guild_id:
             # 개발 서버에만 즉시 동기화 (반영까지 수 초)
@@ -149,70 +150,7 @@ class ValorantBot(commands.Bot):
     async def on_ready(self) -> None:
         assert self.user is not None
         logger.info("로그인: %s (ID: %s) / 서버 %d곳", self.user, self.user.id, len(self.guilds))
-        await self.change_presence(activity=discord.Game(name="/팀 · /선수 · /ping"))
-
-
-# ---------------------------------------------------------------------------
-# 명령어 (Phase 5에서 bot/commands/ 로 Cog 분리 예정)
-# ---------------------------------------------------------------------------
-
-
-def register_commands(tree: app_commands.CommandTree) -> None:
-    @tree.command(name="ping", description="봇과 데이터베이스 응답 속도를 확인합니다.")
-    async def ping(interaction: discord.Interaction) -> None:
-        # DB가 일시정지 상태면 깨우는 데 몇 초 걸릴 수 있어 먼저 응답을 예약한다
-        await interaction.response.defer()
-
-        latency_ms = round(interaction.client.latency * 1000)
-        if not db.configured:
-            db_text = "⚪ 설정 안 됨"
-        else:
-            db_ms = await db.ping()
-            db_text = f"🟢 {db_ms:.0f}ms" if db_ms is not None else "🔴 연결 실패"
-
-        embed = discord.Embed(title="🏓 Pong!", color=EMBED_COLOR)
-        embed.add_field(name="Discord", value=f"🟢 {latency_ms}ms", inline=True)
-        embed.add_field(name="데이터베이스", value=db_text, inline=True)
-        await interaction.followup.send(embed=embed)
-
-    @tree.command(name="팀", description="VALORANT 프로팀 정보를 조회합니다.")
-    @app_commands.describe(이름="팀 이름 (예: T1, 젠지, DRX)")
-    async def team(interaction: discord.Interaction, 이름: str) -> None:
-        embed = discord.Embed(
-            title=f"🔍 {이름}",
-            description="팀 정보 기능은 준비 중입니다. (Phase 3에서 구현 예정)",
-            color=EMBED_COLOR,
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @tree.command(name="선수", description="VALORANT 프로 선수 설정을 조회합니다.")
-    @app_commands.describe(닉네임="선수 닉네임 (예: stax, t3xture)")
-    async def player(interaction: discord.Interaction, 닉네임: str) -> None:
-        embed = discord.Embed(
-            title=f"🔍 {닉네임}",
-            description="선수 정보 기능은 준비 중입니다. (Phase 4에서 구현 예정)",
-            color=EMBED_COLOR,
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @tree.error
-    async def on_app_command_error(
-        interaction: discord.Interaction, error: app_commands.AppCommandError
-    ) -> None:
-        """모든 Slash Command 오류를 잡아 봇이 죽지 않게 하고 사용자에게 한국어로 안내."""
-        logger.error(
-            "명령어 처리 중 오류 (/%s)",
-            getattr(interaction.command, "name", "?"),
-            exc_info=error,
-        )
-        message = "⚠️ 명령어를 처리하는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
-        try:
-            if interaction.response.is_done():
-                await interaction.followup.send(message, ephemeral=True)
-            else:
-                await interaction.response.send_message(message, ephemeral=True)
-        except discord.HTTPException:
-            logger.warning("오류 메시지 전송 실패")
+        await self.change_presence(activity=discord.Game(name="/팀 · /경기 · /선수"))
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +196,7 @@ async def amain(token: str) -> None:
         await init_database()
         await run_forever(token, health)
     finally:
+        await http_client.close()
         await db.dispose()
         if health:
             await health.stop()

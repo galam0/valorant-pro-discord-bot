@@ -6,3 +6,8 @@ python-dotenv>=1.0,<2.0
 SQLAlchemy[asyncio]>=2.0.30,<2.1
 asyncpg>=0.29,<1.0
 alembic>=1.13,<2.0
+
+# Phase 3: 웹 수집
+beautifulsoup4>=4.12,<5.0
+# 시간대 데이터 (서버에 OS 시간대 DB가 없어도 America/New_York 변환이 되도록)
+tzdata>=2024.1
