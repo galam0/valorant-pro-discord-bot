@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 
@@ -18,6 +19,7 @@ from bot.embeds.common import COLOR_INFO, COLOR_OK, error_embed, ts
 from bot.scrapers.http import ScrapeError
 from bot.scrapers.vlr import ParseError
 from bot.services import match_service, team_service
+from bot.utils.aliases import MAJOR_TEAMS
 from bot.utils.config import settings
 
 log = logging.getLogger("valobot.cmd.admin")
@@ -67,6 +69,81 @@ class AdminGroup(app_commands.Group, name="관리", description="관리자 전�
         if result.note:
             embed.add_field(name="참고", value=result.note, inline=False)
         await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="전체팀갱신", description="여러 팀을 한 번에 VLR.gg에서 다시 가져옵니다 (몇 분 걸림).")
+    @app_commands.describe(대상="저장된 팀만 갱신할지, 주요 리그 팀을 모두 가져올지")
+    @app_commands.choices(대상=[
+        app_commands.Choice(name="저장된 팀 (빠름)", value="saved"),
+        app_commands.Choice(name="주요 리그 팀 전체 (VCT 4개 리그)", value="major"),
+    ])
+    async def refresh_all_teams(self, interaction: discord.Interaction, 대상: app_commands.Choice[str]) -> None:
+        if team_service.bulk_refresh_running():
+            await interaction.response.send_message(embed=error_embed("이미 전체 갱신이 진행 중입니다."), ephemeral=True)
+            return
+
+        if 대상.value == "saved":
+            queries = await team_service.saved_team_queries()
+            if not queries:
+                await interaction.response.send_message(
+                    embed=error_embed("저장된 팀이 없습니다. '주요 리그 팀 전체'로 먼저 가져와 주세요."), ephemeral=True
+                )
+                return
+        else:
+            queries = list(MAJOR_TEAMS)
+
+        # 팀당 요청 1~2개, 요청 간격 2초 → 예상 시간 안내
+        per_team = 2.5 if 대상.value == "saved" else 5
+        eta = max(1, round(len(queries) * per_team / 60))
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                title="⏳ 전체 팀 갱신 시작",
+                description=f"{대상.name}: **{len(queries)}팀**\n예상 소요: 약 {eta}분\n사이트 보호를 위해 한 팀씩 천천히 가져옵니다.",
+                color=COLOR_INFO,
+            ),
+            ephemeral=True,
+        )
+
+        started = time.monotonic()
+        last_edit = 0.0
+
+        async def progress(done: int, total: int, current: str) -> None:
+            nonlocal last_edit
+            # Discord 수정 요청이 너무 잦지 않게 10초마다 + 마지막에만
+            if done != total and time.monotonic() - last_edit < 10:
+                return
+            last_edit = time.monotonic()
+            bar = "█" * int(done / total * 20) + "░" * (20 - int(done / total * 20))
+            await interaction.edit_original_response(
+                embed=discord.Embed(
+                    title="⏳ 전체 팀 갱신 중",
+                    description=f"`{bar}` {done}/{total}\n최근: {current}",
+                    color=COLOR_INFO,
+                )
+            )
+
+        async def run() -> None:
+            try:
+                result = await team_service.refresh_many(queries, progress)
+            except Exception as exc:
+                log.exception("전체 팀 갱신 실패")
+                await _safe_edit(interaction, error_embed(f"전체 갱신 중 오류: {exc}"))
+                return
+            minutes = (time.monotonic() - started) / 60
+            embed = discord.Embed(
+                title="✅ 전체 팀 갱신 완료",
+                description=f"성공 **{len(result.ok)}팀** · 실패 **{len(result.failed)}팀** · {minutes:.1f}분",
+                color=COLOR_OK,
+            )
+            if result.failed:
+                lines = [f"`{q}` — {why}" for q, why in result.failed[:15]]
+                if len(result.failed) > 15:
+                    lines.append(f"… 외 {len(result.failed) - 15}팀")
+                embed.add_field(name="실패한 팀", value="\n".join(lines)[:1024], inline=False)
+            await _safe_edit(interaction, embed)
+
+        task = asyncio.create_task(run())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
 
     @app_commands.command(name="경기갱신", description="VLR.gg에서 진행 중·예정 경기와 최근 결과를 다시 가져옵니다.")
     @app_commands.checks.cooldown(1, 30)
@@ -120,6 +197,17 @@ class AdminGroup(app_commands.Group, name="관리", description="관리자 전�
             ]
             embed.add_field(name="최근 수집", value="\n".join(lines)[:1024], inline=False)
         await interaction.followup.send(embed=embed)
+
+
+_background_tasks: set[asyncio.Task[None]] = set()
+
+
+async def _safe_edit(interaction: discord.Interaction, embed: discord.Embed) -> None:
+    """응답 수정 (토큰 유효시간 15분이 지나 실패하면 로그만 남김)."""
+    try:
+        await interaction.edit_original_response(embed=embed)
+    except discord.HTTPException:
+        log.info("결과 메시지를 수정하지 못했습니다 (15분 경과 등). 결과는 /관리 상태 에서 확인 가능")
 
 
 def _uptime(seconds: float) -> str:

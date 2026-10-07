@@ -10,6 +10,23 @@
 
 from __future__ import annotations
 
+# /관리 전체팀갱신 대상=주요 팀 에서 수집할 팀 (VLR 검색어). 리그 구성이 바뀌면 여기만 고치면 된다.
+MAJOR_TEAMS: list[str] = [
+    # Pacific
+    "T1", "Gen.G", "DRX", "Nongshim RedForce", "Paper Rex", "Rex Regum Qeon", "Talon Esports",
+    "Team Secret", "ZETA DIVISION", "DetonatioN FocusMe", "Global Esports", "BOOM Esports",
+    # Americas
+    "Sentinels", "NRG", "100 Thieves", "Cloud9", "Evil Geniuses", "G2 Esports", "LOUD", "FURIA",
+    "MIBR", "Leviatán", "KRÜ Esports", "2Game Esports",
+    # EMEA
+    "FNATIC", "Team Heretics", "Team Liquid", "Team Vitality", "Karmine Corp", "Natus Vincere",
+    "FUT Esports", "BBL Esports", "GIANTX", "KOI", "Gentle Mates", "Apeks",
+    # China
+    "EDward Gaming", "Bilibili Gaming", "Trace Esports", "FunPlus Phoenix", "JD Gaming",
+    "Dragon Ranger Gaming", "All Gamers", "Titan Esports Club", "Wolves Esports", "Xi Lai Gaming",
+    "TYLOO", "Nova Esports",
+]
+
 KO_TEAM_ALIASES: dict[str, list[str]] = {
     # Pacific
     "t1": ["티원", "티1"],

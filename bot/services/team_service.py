@@ -6,8 +6,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+
+from sqlalchemy import select
 
 from bot.database import repository as repo
 from bot.database.database import db
@@ -107,6 +111,55 @@ async def refresh_team(query: str) -> TeamRefreshResult:
         match_count=len(page.upcoming) + len(page.recent),
         note=note,
     )
+
+
+@dataclass
+class BulkRefreshResult:
+    ok: list[str]
+    failed: list[tuple[str, str]]  # (검색어, 이유)
+
+
+_bulk_lock = asyncio.Lock()
+
+
+def bulk_refresh_running() -> bool:
+    return _bulk_lock.locked()
+
+
+async def saved_team_queries() -> list[str]:
+    """DB에 저장된 모든 팀의 VLR ID (검색 없이 바로 팀 페이지를 요청할 수 있음)."""
+    async with db.session() as s:
+        rows = await s.execute(select(repo.Team.vlr_id).order_by(repo.Team.name))
+        return [str(vid) for vid in rows.scalars()]
+
+
+async def refresh_many(
+    queries: list[str],
+    progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+) -> BulkRefreshResult:
+    """여러 팀을 차례로 갱신. 요청 간격은 HTTP 클라이언트가 지키므로 동시에 보내지 않는다.
+
+    한 번에 하나만 실행된다 (이미 실행 중이면 RuntimeError).
+    """
+    if _bulk_lock.locked():
+        raise RuntimeError("이미 전체 갱신이 진행 중입니다.")
+    async with _bulk_lock:
+        result = BulkRefreshResult([], [])
+        total = len(queries)
+        for i, q in enumerate(queries, 1):
+            try:
+                r = await refresh_team(q)
+                result.ok.append(r.name)
+            except TeamNotFound:
+                result.failed.append((q, "VLR에서 찾지 못함"))
+            except Exception as exc:  # 한 팀 실패가 전체를 멈추지 않게
+                result.failed.append((q, type(exc).__name__))
+            if progress is not None:
+                try:
+                    await progress(i, total, result.ok[-1] if result.ok else q)
+                except Exception:
+                    log.debug("진행 상황 표시 실패", exc_info=True)
+        return result
 
 
 async def get_team(query: str) -> tuple[repo.TeamDetail | None, list[repo.Team]]:
