@@ -18,6 +18,7 @@ from bot.render import images
 from bot.render.base import render_enabled
 from bot.render.match_card import render_match_card
 from bot.render.player_card import render_player_card
+from bot.render.ranking_card import render_ranking_card
 from bot.render.team_card import render_team_card
 from bot.utils.korean import STAFF_ROLES, country_ko, role_ko, stage_ko
 
@@ -262,4 +263,22 @@ async def build_player_card(detail: Any, empty_message: str | None = None) -> by
         return await asyncio.to_thread(render_player_card, data, fetched)
     except Exception:
         log.exception("선수 카드 생성 실패 (%s)", p.nickname)
+        return None
+
+
+async def build_ranking_card(title: str, subtitle: str, ranked: list[tuple[int, Any]], footer: str) -> bytes | None:
+    """랭킹 카드 PNG (ranked: [(표시 순위, RankingEntry)]). 실패하면 None."""
+    if not render_enabled():
+        return None
+    try:
+        fetched = await images.fetch_many({f"t{i}": e.logo_url for i, (_, e) in enumerate(ranked)})
+        rows = [
+            {"rank": rank, "name": e.name, "rating": e.rating, "streak": e.streak,
+             "country": e.country, "logo_key": f"t{i}"}
+            for i, (rank, e) in enumerate(ranked)
+        ]
+        data = {"title": title, "subtitle": subtitle, "rows": rows, "footer": footer}
+        return await asyncio.to_thread(render_ranking_card, data, fetched)
+    except Exception:
+        log.exception("랭킹 카드 생성 실패")
         return None

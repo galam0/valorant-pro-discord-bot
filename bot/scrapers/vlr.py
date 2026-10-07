@@ -28,7 +28,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, Comment, Tag
 
 from bot.scrapers.http import HttpClient, http_client
 from bot.utils.korean import STAFF_ROLES, VLR_ROLE_TAG
@@ -171,7 +171,9 @@ def _own_text(el: Tag | None) -> str:
     """자식 태그를 제외한 직접 텍스트 (예: 팀명 옆 '(inactive since ...)' 제외)."""
     if el is None:
         return ""
-    return re.sub(r"\s+", " ", "".join(el.find_all(string=True, recursive=False))).strip()
+    return re.sub(r"\s+", " ", "".join(
+        t for t in el.find_all(string=True, recursive=False) if not isinstance(t, Comment)
+    )).strip()
 
 
 def abs_url(href: str | None) -> str | None:
@@ -782,8 +784,7 @@ class VlrScraper:
         return await asyncio.to_thread(parse_match_full, html, vlr_id)
 
     async def fetch_rankings(self, region: str) -> list[RankingEntry]:
-        path = "/rankings" if region == "world" else f"/rankings/{region}"
-        return await asyncio.to_thread(parse_rankings, await self._get(path))
+        return await asyncio.to_thread(parse_rankings, await self._get(f"/rankings/{region}"))
 
     async def fetch_upcoming_matches(self) -> list[MatchListItem]:
         items = parse_matches_list(await self._get("/matches"))
