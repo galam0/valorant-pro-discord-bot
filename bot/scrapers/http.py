@@ -102,7 +102,12 @@ class HttpClient:
     # -- 요청 ---------------------------------------------------------------
 
     async def get_text(self, url: str) -> str:
-        return await self._fetch_raw(url, check_robots=True, retries=self.max_retries)
+        t0 = time.monotonic()
+        try:
+            return await self._fetch_raw(url, check_robots=True, retries=self.max_retries)
+        finally:
+            # 대기 시간(같은 사이트 2초 간격 + 다른 작업 순번) 포함. 느린 명령어를 찾을 때 '[성능]'으로 검색
+            log.info("[성능] 요청 %s %.1f초", url, time.monotonic() - t0)
 
     async def _fetch_raw(self, url: str, *, check_robots: bool, retries: int) -> str:
         if check_robots and not await self._allowed_by_robots(url):

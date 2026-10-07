@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections import OrderedDict
 from io import BytesIO
 
@@ -84,5 +85,8 @@ async def fetch_image(url: str | None) -> Image.Image | None:
 
 async def fetch_many(urls: dict[str, str | None]) -> dict[str, Image.Image | None]:
     keys = list(urls)
+    t0 = time.perf_counter()
+    cached = sum(1 for k in keys if urls[k] in _CACHE)
     results = await asyncio.gather(*(fetch_image(urls[k]) for k in keys))
+    log.info("[성능] 이미지 %d장 (캐시 %d) %dms", len([k for k in keys if urls[k]]), cached, (time.perf_counter() - t0) * 1000)
     return dict(zip(keys, results))

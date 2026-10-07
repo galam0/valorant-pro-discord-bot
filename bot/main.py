@@ -152,6 +152,11 @@ class ValorantBot(commands.Bot):
         synced = await self.tree.sync(guild=guild)
         return len(synced)
 
+    async def on_app_command_completion(self, interaction: discord.Interaction, command: discord.app_commands.Command | discord.app_commands.ContextMenu) -> None:
+        """명령어가 끝날 때마다 '입력 → 응답 완료' 시간을 로그로 남긴다 (느린 명령어 찾기용)."""
+        elapsed = (discord.utils.utcnow() - interaction.created_at).total_seconds()
+        logger.info("[성능] /%s 총 %.1f초", command.qualified_name, elapsed)
+
     async def on_ready(self) -> None:
         assert self.user is not None
         logger.info("로그인: %s (ID: %s) / 서버 %d곳", self.user, self.user.id, len(self.guilds))

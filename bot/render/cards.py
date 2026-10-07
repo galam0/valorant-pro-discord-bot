@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -27,6 +28,14 @@ log = logging.getLogger("valobot.render.cards")
 
 DISPLAY_TZ = ZoneInfo(os.getenv("DISPLAY_TZ", "Asia/Seoul"))
 _WEEKDAY = "월화수목금토일"
+
+
+async def _render(fn: Any, *args: Any) -> bytes:
+    """카드 그리기(별도 스레드) + 걸린 시간 로그. 느린 곳을 찾을 때 /관리 로그에서 '[성능]'을 검색."""
+    t0 = time.perf_counter()
+    png = await asyncio.to_thread(fn, *args)
+    log.info("[성능] %s 렌더 %dms (%dKB)", fn.__name__, (time.perf_counter() - t0) * 1000, len(png) // 1024)
+    return png
 
 
 def fmt_dt(dt: datetime | None, *, with_time: bool = True) -> str:
@@ -121,7 +130,7 @@ async def build_team_card(detail: TeamDetail) -> bytes | None:
             "recent": recent,
             "updated": fmt_dt(team.last_scraped_at),
         }
-        return await asyncio.to_thread(render_team_card, data, {"team": fetched.get("team")})
+        return await _render(render_team_card, data, {"team": fetched.get("team")})
     except Exception:
         log.exception("팀 카드 생성 실패 (%s)", team.name)
         return None
@@ -162,7 +171,7 @@ async def build_match_card(match: Match, game_id: str) -> bytes | None:
             "selected": game_id,
             "updated": fmt_time(match.detail_scraped_at),
         }
-        return await asyncio.to_thread(render_match_card, data, logos)
+        return await _render(render_match_card, data, logos)
     except Exception:
         log.exception("경기 카드 생성 실패 (match %s)", match.vlr_id)
         return None
@@ -261,7 +270,7 @@ async def build_player_card(detail: Any, empty_message: str | None = None) -> by
             "updated": updated,
             "empty_message": empty_message or "ProSettings에 등록된 설정이 없는 선수입니다.",
         }
-        return await asyncio.to_thread(render_player_card, data, fetched)
+        return await _render(render_player_card, data, fetched)
     except Exception:
         log.exception("선수 카드 생성 실패 (%s)", p.nickname)
         return None
@@ -279,7 +288,7 @@ async def build_ranking_card(title: str, subtitle: str, ranked: list[tuple[int, 
             for i, (rank, e) in enumerate(ranked)
         ]
         data = {"title": title, "subtitle": subtitle, "rows": rows, "footer": footer}
-        return await asyncio.to_thread(render_ranking_card, data, fetched)
+        return await _render(render_ranking_card, data, fetched)
     except Exception:
         log.exception("랭킹 카드 생성 실패")
         return None
@@ -320,7 +329,7 @@ async def build_compare_card(result: Any) -> bytes | None:
             "h2h": {"a_wins": a_wins, "b_wins": b_wins, "rows": h2h_rows},
             "footer": "저장된 경기 기준 · 출처: VLR.gg",
         }
-        return await asyncio.to_thread(render_compare_card, data, logos)
+        return await _render(render_compare_card, data, logos)
     except Exception:
         log.exception("팀 비교 카드 생성 실패")
         return None
