@@ -600,6 +600,58 @@ async def find_player(session: AsyncSession, query: str) -> PlayerLookup:
     return PlayerLookup(None, [c for c in candidates if c is not None])
 
 
+async def save_manual_player_settings(
+    session: AsyncSession,
+    player_id: int,
+    *,
+    values: dict[str, Any],
+    gear: dict[str, str],
+    crosshair_code: str | None,
+) -> None:
+    """관리자가 직접 입력한 선수 설정 저장. 입력한 항목만 바꾸고 나머지는 유지한다."""
+    now = utcnow()
+    st = (
+        await session.execute(select(PlayerSettings).where(PlayerSettings.player_id == player_id))
+    ).scalar_one_or_none()
+    if st is None:
+        st = PlayerSettings(player_id=player_id)
+        session.add(st)
+    for key, val in values.items():
+        setattr(st, key, val)
+    if st.edpi is None or {"dpi", "sensitivity"} & values.keys():
+        if st.dpi and st.sensitivity:
+            st.edpi = round(st.dpi * st.sensitivity, 2)
+    raw = dict(st.raw or {})
+    raw["manual"] = True
+    st.raw = raw
+    st.source_updated_at = now
+    st.last_scraped_at = now
+
+    for category, name in gear.items():
+        eq = (
+            await session.execute(
+                select(Equipment).where(Equipment.player_id == player_id, Equipment.category == category)
+            )
+        ).scalar_one_or_none()
+        if eq is None:
+            session.add(Equipment(player_id=player_id, category=category, name=name[:200]))
+        else:
+            eq.name = name[:200]
+            eq.product_url = None
+
+    if crosshair_code:
+        ch = (
+            await session.execute(select(Crosshair).where(Crosshair.player_id == player_id))
+        ).scalar_one_or_none()
+        if ch is None:
+            ch = Crosshair(player_id=player_id)
+            session.add(ch)
+        ch.code = crosshair_code
+        ch.raw = {"manual": True}
+        ch.color = ch.outlines = ch.center_dot = ch.inner_lines = ch.outer_lines = None
+    await session.flush()
+
+
 @dataclass
 class PlayerDetail:
     player: Player

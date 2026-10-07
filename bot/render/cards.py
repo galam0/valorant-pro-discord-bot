@@ -226,7 +226,8 @@ async def build_player_card(detail: Any, empty_message: str | None = None) -> by
 
         ch_rows: list[tuple[str, str]] = []
         raw: dict[str, Any] = {}
-        if ch is not None:
+        manual = bool(s is not None and (s.raw or {}).get("manual"))
+        if ch is not None and not (ch.raw or {}).get("manual"):
             raw = ch.raw or {}
             ch_rows = [
                 ("색상", ch.color or "-"),
@@ -254,6 +255,7 @@ async def build_player_card(detail: Any, empty_message: str | None = None) -> by
             "crosshair_rows": ch_rows,
             "crosshair_raw": raw,
             "crosshair_code": ch.code if ch is not None else None,
+            "manual": manual,
             "updated": updated,
             "empty_message": empty_message or "ProSettings에 등록된 설정이 없는 선수입니다.",
         }

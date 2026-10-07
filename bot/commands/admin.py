@@ -154,6 +154,52 @@ class AdminGroup(app_commands.Group, name="관리", description="관리자 전�
         await interaction.response.defer(ephemeral=True, thinking=True)
         await send_player(interaction, 닉네임, force=True)
 
+    @app_commands.command(name="선수설정등록", description="선수의 감도·장비·크로스헤어를 직접 입력합니다 (입력한 항목만 바뀜).")
+    @app_commands.describe(
+        닉네임="선수 닉네임 (이미 저장된 선수여야 해요)", dpi="마우스 DPI", 감도="게임 내 감도",
+        스코프감도="스코프(줌) 감도", 폴링레이트="폴링레이트 Hz (예: 1000)", 해상도="예: 1920x1080",
+        비율="화면 비율 (예: 16:9)", 마우스="마우스 이름", 키보드="키보드 이름", 마우스패드="마우스패드 이름",
+        모니터="모니터 이름", 헤드셋="헤드셋 이름", 크로스헤어코드="게임 내 크로스헤어 가져오기 코드",
+    )
+    async def register_player_settings(
+        self, interaction: discord.Interaction, 닉네임: str,
+        dpi: app_commands.Range[int, 100, 20000] | None = None,
+        감도: app_commands.Range[float, 0.01, 10] | None = None,
+        스코프감도: app_commands.Range[float, 0.01, 10] | None = None,
+        폴링레이트: app_commands.Range[int, 125, 8000] | None = None,
+        해상도: str | None = None, 비율: str | None = None,
+        마우스: str | None = None, 키보드: str | None = None, 마우스패드: str | None = None,
+        모니터: str | None = None, 헤드셋: str | None = None, 크로스헤어코드: str | None = None,
+    ) -> None:
+        await interaction.response.defer(ephemeral=True)
+        values = {k: v for k, v in {
+            "dpi": dpi, "sensitivity": 감도, "scoped_sensitivity": 스코프감도, "polling_rate": 폴링레이트,
+            "resolution": 해상도, "aspect_ratio": 비율,
+        }.items() if v is not None}
+        gear = {k: v.strip() for k, v in {
+            "mouse": 마우스, "keyboard": 키보드, "mousepad": 마우스패드, "monitor": 모니터, "headset": 헤드셋,
+        }.items() if v and v.strip()}
+        code = 크로스헤어코드.strip() if 크로스헤어코드 and 크로스헤어코드.strip() else None
+        if not (values or gear or code):
+            await interaction.followup.send(embed=error_embed("입력한 항목이 없습니다. 바꿀 값을 하나 이상 넣어주세요."))
+            return
+        async with db.session() as s:
+            lookup = await repo.find_player(s, 닉네임)
+            if lookup.player is None:
+                names = ", ".join(f"`{p.nickname}`" for p in lookup.candidates)
+                msg = f"'{닉네임}' 선수를 찾을 수 없습니다." + (f"\n혹시 이 선수인가요? {names}" if names else "")
+                await interaction.followup.send(embed=error_embed(msg))
+                return
+            await repo.save_manual_player_settings(s, lookup.player.id, values=values, gear=gear, crosshair_code=code)
+            await s.commit()
+            nickname = lookup.player.nickname
+        await interaction.followup.send(embed=discord.Embed(
+            title="✅ 선수 설정 저장",
+            description=f"**{nickname}** 선수 설정을 저장했습니다. `/선수 {nickname}` 으로 확인해보세요.\n"
+                        "직접 입력한 설정은 자동으로 덮어쓰지 않습니다.",
+            color=COLOR_OK,
+        ))
+
     @app_commands.command(name="경기갱신", description="VLR.gg에서 진행 중·예정 경기와 최근 결과를 다시 가져옵니다.")
     @app_commands.checks.cooldown(1, 30)
     async def refresh_matches(self, interaction: discord.Interaction) -> None:

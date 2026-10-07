@@ -36,6 +36,8 @@ class PlayerResult:
 
 def _fresh(detail: repo.PlayerDetail) -> bool:
     s = detail.settings
+    if s is not None and (s.raw or {}).get("manual"):
+        return True  # 관리자가 직접 입력한 설정은 자동 갱신하지 않음 (ProSettings 요청 안 함)
     return s is not None and s.last_scraped_at is not None and repo.utcnow() - s.last_scraped_at < SETTINGS_TTL
 
 

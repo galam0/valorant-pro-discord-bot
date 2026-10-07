@@ -102,7 +102,8 @@ def render_player_card(data: dict[str, Any], images: dict[str, Any] | None = Non
 
     tile_rows = -(-len(tiles) // 3) if tiles else 0
     gear_h = 44 + max(1, len(gear)) * 50 + 16 if gear else 0
-    ch_h = 44 + 270 if ch_rows else 0
+    code_only = bool(data.get("crosshair_code")) and not ch_rows   # 수동 입력: 미리보기 없이 코드만
+    ch_h = 44 + 270 if ch_rows else (44 + 50 if code_only else 0)
     body_h = (44 + tile_rows * (TILE_H + 14) + 52 + gear_h + ch_h) if has_settings else 140
     H = HEADER_H + 20 + body_h + FOOTER_H
 
@@ -189,10 +190,17 @@ def render_player_card(data: dict[str, Any], images: dict[str, Any] | None = Non
                 d.rounded_rectangle([rx - 10, y + 228, W - PAD, y + 262], radius=8, fill=PANEL)
                 d.text((rx, y + 245), code, font=cf, fill=TEXT, anchor="lm")
 
+        if code_only:
+            d.text((PAD, y), "크로스헤어", font=font("heavy", 24), fill=TEXT)
+            y += 44
+            code, cf = fit_text(d, data["crosshair_code"], "regular", 17, W - PAD * 2 - 24, 12)
+            d.rounded_rectangle([PAD, y, W - PAD, y + 38], radius=8, fill=PANEL)
+            d.text((PAD + 12, y + 19), code, font=cf, fill=TEXT, anchor="lm")
+
     # --- 바닥글 ---
     fy = H - FOOTER_H
     d.line([PAD, fy, W - PAD, fy], fill=LINE, width=1)
-    d.text((PAD, fy + FOOTER_H / 2), "출처: ProSettings.net", font=font("regular", 16), fill=MUTED, anchor="lm")
+    d.text((PAD, fy + FOOTER_H / 2), "출처: 관리자 입력" if data.get("manual") else "출처: ProSettings.net", font=font("regular", 16), fill=MUTED, anchor="lm")
     if data.get("updated"):
         d.text((W - PAD, fy + FOOTER_H / 2), f"설정 업데이트 {data['updated']}", font=font("regular", 16),
                fill=MUTED, anchor="rm")
