@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from io import BytesIO
 
 import discord
 from discord import app_commands
@@ -11,6 +12,7 @@ from discord.ext import commands
 from bot.database.database import db
 from bot.embeds.common import error_embed
 from bot.embeds.team import team_embed
+from bot.render.cards import build_team_card
 from bot.services import team_service
 from bot.views.team import TeamView
 
@@ -45,7 +47,12 @@ class TeamCommands(commands.Cog):
             await interaction.followup.send(embed=error_embed(msg))
             return
 
-        await interaction.followup.send(embed=team_embed(detail), view=TeamView(detail))
+        png = await build_team_card(detail)
+        if png is not None:
+            file = discord.File(BytesIO(png), filename=f"team_{detail.team.vlr_id}.png")
+            await interaction.followup.send(file=file, view=TeamView(detail))
+        else:  # 폰트가 없거나 이미지 생성 실패 → 텍스트 Embed
+            await interaction.followup.send(embed=team_embed(detail), view=TeamView(detail))
 
 
 async def setup(bot: commands.Bot) -> None:

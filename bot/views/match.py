@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from io import BytesIO
 from typing import Any
 
 import discord
@@ -10,6 +11,7 @@ import discord
 from bot.database.models import Match
 from bot.embeds.common import error_embed
 from bot.embeds.match import default_game_id, match_detail_embed, short_label
+from bot.render.cards import build_match_card
 from bot.scrapers.http import ScrapeError
 from bot.services import match_service
 
@@ -31,13 +33,27 @@ async def build_match_message(
     game_id: str | None = None,
     others: list[MatchChoice] | None = None,
     force: bool = False,
-) -> tuple[discord.Embed, discord.ui.View]:
+) -> tuple[dict[str, Any], discord.ui.View]:
+    """경기 상세 메시지 내용. 이미지 카드가 되면 {'file': ...}, 아니면 {'embed': ...}."""
     result = await match_service.get_match_detail(vlr_id, force=force)
     detail = result.match.detail or {}
     gid = game_id or default_game_id(detail)
-    embed = match_detail_embed(result.match, gid, stale=result.stale)
     view = MatchDetailView(result.match, gid, others or [])
-    return embed, view
+
+    png = await build_match_card(result.match, gid)
+    if png is not None:
+        payload: dict[str, Any] = {"file": discord.File(BytesIO(png), filename=f"match_{vlr_id}.png")}
+        if result.stale:
+            payload["content"] = "⚠️ 최신 정보를 가져오지 못해 이전 기록을 표시합니다."
+        return payload, view
+    return {"embed": match_detail_embed(result.match, gid, stale=result.stale)}, view
+
+
+def edit_kwargs(payload: dict[str, Any]) -> dict[str, Any]:
+    """메시지 수정용: 이미지 ↔ Embed 전환까지 처리."""
+    if "file" in payload:
+        return {"attachments": [payload["file"]], "embed": None, "content": payload.get("content")}
+    return {"embed": payload["embed"], "attachments": [], "content": None}
 
 
 def _friendly_error(exc: Exception) -> str:
@@ -53,24 +69,24 @@ async def send_match_detail(
     if not interaction.response.is_done():
         await interaction.response.defer(thinking=True)
     try:
-        embed, view = await build_match_message(vlr_id, others=others)
+        payload, view = await build_match_message(vlr_id, others=others)
     except Exception as exc:
         log.warning("경기 상세 실패 (match %s): %s", vlr_id, exc)
         await interaction.followup.send(embed=error_embed(_friendly_error(exc)), ephemeral=True)
         return
-    await interaction.followup.send(embed=embed, view=view)
+    await interaction.followup.send(**payload, view=view)
 
 
 async def _edit_with(interaction: discord.Interaction, vlr_id: int, **kwargs: Any) -> None:
     """같은 메시지를 다른 맵/경기로 바꿔서 다시 그린다."""
     await interaction.response.defer()
     try:
-        embed, view = await build_match_message(vlr_id, **kwargs)
+        payload, view = await build_match_message(vlr_id, **kwargs)
     except Exception as exc:
         log.warning("경기 상세 갱신 실패 (match %s): %s", vlr_id, exc)
         await interaction.followup.send(embed=error_embed(_friendly_error(exc)), ephemeral=True)
         return
-    await interaction.edit_original_response(embed=embed, view=view)
+    await interaction.edit_original_response(**edit_kwargs(payload), view=view)
 
 
 class MapSelect(discord.ui.Select):

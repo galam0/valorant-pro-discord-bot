@@ -150,6 +150,7 @@ class TeamMember(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(80), nullable=False)
     real_name: Mapped[str | None] = mapped_column(String(120))
     country_code: Mapped[str | None] = mapped_column(String(8))
+    photo_url: Mapped[str | None] = mapped_column(Text)              # VLR 로스터 사진
     # player / substitute / inactive / head_coach / coach / analyst / manager / staff
     role: Mapped[str] = mapped_column(String(30), nullable=False, server_default="player")
     is_captain: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")

@@ -16,6 +16,7 @@ from discord.ext import commands
 
 from bot.commands import EXTENSIONS, install_error_handler
 from bot.database.database import db
+from bot.render import images as card_images
 from bot.scrapers.http import http_client
 from bot.utils.config import settings
 from bot.utils.logger import setup_logging
@@ -197,6 +198,7 @@ async def amain(token: str) -> None:
         await run_forever(token, health)
     finally:
         await http_client.close()
+        await card_images.close()
         await db.dispose()
         if health:
             await health.stop()

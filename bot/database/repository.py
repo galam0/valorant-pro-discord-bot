@@ -163,6 +163,7 @@ async def upsert_team_page(session: AsyncSession, page: TeamPage) -> int:
             real_name=entry.real_name,
             country_code=entry.country_code,
             vlr_url=f"https://www.vlr.gg/player/{entry.player_vlr_id}",
+            photo_url=entry.photo_url,
             current_team_id=team_id,
         )
         p_stmt = pg_insert(Player).values(**p_values)
@@ -173,6 +174,8 @@ async def upsert_team_page(session: AsyncSession, page: TeamPage) -> int:
                 "real_name": func.coalesce(p_stmt.excluded.real_name, Player.real_name),
                 "country_code": func.coalesce(p_stmt.excluded.country_code, Player.country_code),
                 "vlr_url": p_stmt.excluded.vlr_url,
+                # ProSettings 사진이 이미 있으면 유지, 없을 때만 VLR 사진 사용
+                "photo_url": func.coalesce(Player.photo_url, p_stmt.excluded.photo_url),
                 "current_team_id": p_stmt.excluded.current_team_id,
                 "updated_at": now,
             },
@@ -201,6 +204,7 @@ async def upsert_team_page(session: AsyncSession, page: TeamPage) -> int:
                 name=entry.name,
                 real_name=entry.real_name,
                 country_code=entry.country_code,
+                photo_url=entry.photo_url,
                 role=entry.role,
                 is_captain=entry.is_captain,
                 sort_order=entry.sort_order,
