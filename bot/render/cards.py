@@ -17,6 +17,7 @@ from bot.database.models import Match
 from bot.database.repository import TeamDetail
 from bot.render import images
 from bot.render.base import render_enabled
+from bot.render.bracket_card import render_bracket_card
 from bot.render.compare_card import render_compare_card
 from bot.render.match_card import render_match_card
 from bot.render.player_card import render_player_card
@@ -332,4 +333,36 @@ async def build_compare_card(result: Any) -> bytes | None:
         return await _render(render_compare_card, data, logos)
     except Exception:
         log.exception("팀 비교 카드 생성 실패")
+        return None
+
+
+async def build_bracket_card(bracket: Any, stale: bool = False) -> bytes | None:
+    """대회 대진표 카드 PNG (bracket: vlr.EventBracket). 실패하면 None."""
+    if not render_enabled():
+        return None
+    try:
+        urls: dict[str, str | None] = {"event": bracket.logo_url}
+        sections = []
+        for si, sec in enumerate(bracket.sections):
+            cols = []
+            for ci, col in enumerate(sec.columns):
+                matches = []
+                for mi, m in enumerate(col.matches):
+                    row = {}
+                    for key, t in (("t1", m.team1), ("t2", m.team2)):
+                        lk = f"s{si}c{ci}m{mi}{key}"
+                        urls[lk] = t.logo_url
+                        row[key] = {"name": t.name, "score": t.score, "winner": t.winner, "loser": t.loser, "logo_key": lk}
+                    finished = m.team1.winner or m.team2.winner
+                    row["when"] = "" if finished else fmt_dt(m.scheduled_at)
+                    row["live"] = m.live
+                    matches.append(row)
+                cols.append({"label": stage_ko(col.label) or col.label, "matches": matches})
+            sections.append({"kind": sec.kind, "columns": cols})
+        logos = await images.fetch_many(urls)
+        footer = "시간은 한국 시간 기준 · 출처: VLR.gg" + (" · 최신 정보를 못 가져와 이전 결과입니다" if stale else "")
+        data = {"title": bracket.name, "subtitle": "대진표 · VLR.gg", "sections": sections, "footer": footer}
+        return await _render(render_bracket_card, data, logos)
+    except Exception:
+        log.exception("대진표 카드 생성 실패 (%s)", getattr(bracket, "name", "?"))
         return None

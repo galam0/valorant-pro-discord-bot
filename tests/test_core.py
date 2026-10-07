@@ -10,7 +10,8 @@ from tests import _stubs  # noqa: F401  (다른 import보다 먼저)
 from bot.render.compare_card import render_compare_card
 from bot.render.player_card import render_player_card
 from bot.render.ranking_card import render_ranking_card
-from bot.scrapers.vlr import ParseError, parse_rankings
+from bot.render.bracket_card import render_bracket_card
+from bot.scrapers.vlr import ParseError, parse_event_bracket, parse_rankings, parse_search_events
 from bot.services.ranking_service import _tokens, is_first_team
 from bot.utils.korean import flag_emoji
 
@@ -115,6 +116,80 @@ def _import_scheduler():
             else:
                 sys.modules[k] = v
     return scheduler
+
+
+EVENT_HTML = """
+<div class="event-header"><div class="event-header-thumb"><div class="wf-avatar"><div><img src="//owcdn.net/img/e.png"></div></div></div>
+<h1 class="event-header-main-title"> Valorant Champions 2026 </h1></div>
+<div class="event-brackets-container"><div class="bracket-container mod-upper">
+<div class="bracket-col mod-1"><div class="bracket-col-label"> Upper Quarterfinals </div>
+<div class="bracket-row mod-1"><a class="bracket-item " href="/754732/nrg-vs-t1-valorant-champions-2026-ubqf">
+<div class="bracket-item-team mod-first mod-winner "><div class="bracket-item-team-name"><img src="//owcdn.net/img/a.png"><span>NRG</span></div><div class="bracket-item-team-score"> 2 </div></div>
+<div class="bracket-item-team mod-loser "><div class="bracket-item-team-name"><img src="//owcdn.net/img/b.png"><span>T1</span></div><div class="bracket-item-team-score"> 0 </div></div>
+<div class=" bracket-item-status moment-tz-convert" data-utc-ts="1791363600"><div><span></span>6:00 pm KST, Oct 7</div></div></a></div></div>
+<div class="bracket-col mod-3"><div class="bracket-col-label"> Upper Final </div>
+<div class="bracket-row mod-1"><a class="bracket-item mod-last" href="/754736/tbd-valorant-champions-2026-ubf">
+<div class="bracket-item-team mod-first "><div class="bracket-item-team-name"><img src="/img/vlr/tmp/vlr.png"><span></span></div><div class="bracket-item-team-score"> </div></div>
+<div class="bracket-item-team "><div class="bracket-item-team-name"><img src="/img/vlr/tmp/vlr.png"><span></span></div><div class="bracket-item-team-score"> </div></div>
+<div class=" bracket-item-status moment-tz-convert" data-utc-ts="1792130400"><div><span></span>3:00 pm KST, Oct 16</div></div></a></div></div>
+</div></div>
+"""
+
+SEARCH_HTML = """
+<a href="/search/r/event/2765/idx" class="wf-module-item search-item mod-first"><div class="search-item-thumb"><img src="//owcdn.net/img/x.png"></div>
+<div style="flex: 1;"><div class="search-item-title"> Valorant Masters London 2026 </div>
+<div class="search-item-desc ge-text-light"> Jun 6, 2026 to Jun 21, 2026 ⋅ <span>$1,000,000</span> </div></div></a>
+"""
+
+
+class BracketTest(unittest.TestCase):
+    def test_parse_bracket(self):
+        br = parse_event_bracket(EVENT_HTML, 2766)
+        self.assertEqual(br.name, "Valorant Champions 2026")
+        self.assertEqual(len(br.sections), 1)
+        self.assertEqual(br.sections[0].kind, "upper")
+        cols = br.sections[0].columns
+        self.assertEqual([c.label for c in cols], ["Upper Quarterfinals", "Upper Final"])
+        done, tbd = cols[0].matches[0], cols[1].matches[0]
+        self.assertEqual((done.team1.name, done.team1.score, done.team1.winner), ("NRG", 2, True))
+        self.assertEqual((done.team2.name, done.team2.score, done.team2.loser), ("T1", 0, True))
+        self.assertEqual(done.match_id, 754732)
+        self.assertEqual(done.scheduled_at.isoformat(), "2026-10-07T09:00:00+00:00")  # = 한국 시간 오후 6시
+        self.assertEqual((tbd.team1.name, tbd.team1.score, tbd.team1.logo_url), ("", None, None))  # 미정 + 기본 이미지 제외
+
+    def test_no_bracket_ok_but_broken_page_raises(self):
+        html = '<h1 class="event-header-main-title">Group Event</h1>'
+        self.assertEqual(parse_event_bracket(html, 1).sections, [])
+        with self.assertRaises(ParseError):
+            parse_event_bracket("<html></html>", 1)
+
+    def test_search_events(self):
+        r = parse_search_events(SEARCH_HTML)
+        self.assertEqual((r[0].vlr_id, r[0].name), (2765, "Valorant Masters London 2026"))
+        self.assertEqual(r[0].start.year, 2026)
+
+    def test_query_and_ranking(self):
+        from datetime import datetime, timezone
+
+        from bot.scrapers.vlr import EventSearchResult
+        from bot.services import event_service as es
+
+        self.assertEqual(es.to_query("마스터스 런던"), "masters london")
+        self.assertEqual(es.to_query("챔피언스 2026"), "champions 2026")
+        now = datetime.now(timezone.utc)
+        old = EventSearchResult(1, "Champions 2023", datetime(2023, 8, 1, tzinfo=timezone.utc), "$2,250,000", None)
+        small = EventSearchResult(2, "Champions Cup", now, "$1,000", None)
+        big = EventSearchResult(3, "Champions 2026", now, "$2,250,000", None)
+        self.assertEqual([e.vlr_id for e in sorted([old, small, big], key=es._rank)], [3, 2, 1])
+
+    def test_render_bracket(self):
+        def team(n, sc=None, w=False):
+            return {"name": n, "score": sc, "winner": w, "loser": False}
+        col = {"label": "승자조 8강", "matches": [{"t1": team("A", 2, True), "t2": team(""), "when": "", "live": False}] * 4}
+        col2 = {"label": "승자조 4강", "matches": [{"t1": team(""), "t2": team(""), "when": "10월 8일", "live": True}] * 2}
+        col3 = {"label": "결승", "matches": [{"t1": team(""), "t2": team(""), "when": "x", "live": False}]}
+        data = {"title": "T", "subtitle": "s", "footer": "f", "sections": [{"kind": "upper", "columns": [col, col2, col3]}]}
+        self.assertTrue(render_bracket_card(data, {}).startswith(PNG))
 
 
 class SchedulerLiveJobTest(unittest.TestCase):

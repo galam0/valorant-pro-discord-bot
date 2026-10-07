@@ -748,6 +748,137 @@ def parse_rankings(html: str) -> list[RankingEntry]:
 
 
 # ---------------------------------------------------------------------------
+# 대회 검색 / 대진표
+#  - 검색  /search/?q=...&type=events   a.search-item (href=/search/r/event/{id}/idx), .search-item-title, .search-item-desc
+#  - 대회  /event/{id}                  h1.event-header-main-title, .event-header-thumb img,
+#                                       .event-brackets-container > .bracket-container(.mod-upper/.mod-lower)
+#                                       > .bracket-col(.bracket-col-label, a.bracket-item) ; 경기 시각은 data-utc-ts (epoch 초, UTC)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class EventSearchResult:
+    vlr_id: int
+    name: str
+    start: datetime | None
+    desc: str | None
+    logo_url: str | None
+
+
+@dataclass
+class BracketTeam:
+    name: str                 # 아직 정해지지 않았으면 빈 문자열 (TBD)
+    logo_url: str | None
+    score: int | None
+    winner: bool = False
+    loser: bool = False
+
+
+@dataclass
+class BracketMatch:
+    match_id: int | None
+    team1: BracketTeam
+    team2: BracketTeam
+    scheduled_at: datetime | None
+    live: bool = False
+
+
+@dataclass
+class BracketColumn:
+    label: str
+    matches: list[BracketMatch]
+
+
+@dataclass
+class BracketSection:
+    kind: str                 # upper / lower / main
+    columns: list[BracketColumn]
+
+
+@dataclass
+class EventBracket:
+    vlr_id: int
+    name: str
+    logo_url: str | None
+    sections: list[BracketSection]
+
+
+_EVENT_DATE = re.compile(r"([A-Z][a-z]{2}) (\d{1,2}), (\d{4})")
+
+
+def parse_search_events(html: str) -> list[EventSearchResult]:
+    results: list[EventSearchResult] = []
+    for a in _soup(html).select("a.search-item"):
+        vlr_id = _id_from(r"/event/(\d+)", a.get("href"))
+        name = _text(a.select_one(".search-item-title"))
+        if vlr_id is None or not name:
+            continue
+        desc = _text(a.select_one(".search-item-desc")) or None
+        start = None
+        m = _EVENT_DATE.search(desc or "")
+        if m:
+            try:
+                start = datetime.strptime(" ".join(m.groups()), "%b %d %Y").replace(tzinfo=timezone.utc)
+            except ValueError:
+                start = None
+        img = a.select_one(".search-item-thumb img")
+        results.append(EventSearchResult(vlr_id, name, start, desc, image_url(img.get("src") if img else None)))
+    return results
+
+
+def _parse_bracket_team(el: Tag | None) -> BracketTeam:
+    if el is None:
+        return BracketTeam("", None, None)
+    classes = el.get("class") or []
+    img = el.select_one(".bracket-item-team-name img")
+    score = _int_or_none(_text(el.select_one(".bracket-item-team-score")))
+    return BracketTeam(
+        name=_text(el.select_one(".bracket-item-team-name span")),
+        logo_url=image_url(img.get("src") if img else None),
+        score=score,
+        winner="mod-winner" in classes,
+        loser="mod-loser" in classes,
+    )
+
+
+def _parse_bracket_item(a: Tag) -> BracketMatch:
+    teams = a.select(".bracket-item-team")
+    t1 = _parse_bracket_team(teams[0] if len(teams) > 0 else None)
+    t2 = _parse_bracket_team(teams[1] if len(teams) > 1 else None)
+    status = a.select_one(".bracket-item-status")
+    when = None
+    ts = str(status.get("data-utc-ts") or "") if status is not None else ""
+    if ts.isdigit():
+        when = datetime.fromtimestamp(int(ts), timezone.utc)
+    live = bool(status is not None and "live" in _text(status).lower())
+    return BracketMatch(_id_from(r"^/(\d+)", a.get("href")), t1, t2, when, live)
+
+
+def parse_event_bracket(html: str, vlr_id: int) -> EventBracket:
+    """대회 페이지의 대진표. 대진표가 없으면 sections 가 빈 목록."""
+    soup = _soup(html)
+    title = _text(soup.select_one("h1.event-header-main-title"))
+    if not title:
+        raise ParseError("대회 이름을 찾지 못했습니다 (페이지 구조가 바뀌었을 수 있음)")
+    thumb = soup.select_one(".event-header-thumb img")
+    sections: list[BracketSection] = []
+    for box in soup.select(".event-brackets-container .bracket-container"):
+        classes = box.get("class") or []
+        kind = "upper" if "mod-upper" in classes else "lower" if "mod-lower" in classes else "main"
+        columns = [
+            BracketColumn(
+                label=_text(col.select_one(".bracket-col-label")),
+                matches=[_parse_bracket_item(a) for a in col.select("a.bracket-item")],
+            )
+            for col in box.select(".bracket-col")
+        ]
+        columns = [c for c in columns if c.matches]
+        if columns:
+            sections.append(BracketSection(kind, columns))
+    return EventBracket(vlr_id, title, image_url(thumb.get("src") if thumb else None), sections)
+
+
+# ---------------------------------------------------------------------------
 # 스크래퍼 (네트워크 + 시간대 보정)
 # ---------------------------------------------------------------------------
 
@@ -785,6 +916,14 @@ class VlrScraper:
 
     async def fetch_rankings(self, region: str) -> list[RankingEntry]:
         return await asyncio.to_thread(parse_rankings, await self._get(f"/rankings/{region}"))
+
+    async def search_events(self, query: str) -> list[EventSearchResult]:
+        html = await self._get(f"/search/?q={quote(query)}&type=events")
+        return parse_search_events(html)
+
+    async def fetch_event_bracket(self, vlr_id: int) -> EventBracket:
+        html = await self._get(f"/event/{vlr_id}")
+        return await asyncio.to_thread(parse_event_bracket, html, vlr_id)
 
     async def fetch_upcoming_matches(self) -> list[MatchListItem]:
         items = parse_matches_list(await self._get("/matches"))
