@@ -426,7 +426,14 @@ async def build_schedule_card(title: str, subtitle: str, matches: list[Match], f
         fetched = await images.fetch_many(urls)
         extra = len(matches) - len(shown)
         event = next((m.tournament_name for m in matches if m.tournament_name), "")
-        data = {"event": event, "title_sub": title, "date": date_label or subtitle, "rows": rows,
+        done = [m.status == "completed" for m in matches]
+        if matches and all(done):
+            words, kind = ("MATCH", "RESULTS"), "결과"
+        elif matches and any(done):
+            words, kind = ("MATCH", "DAY"), "경기"
+        else:
+            words, kind = ("NEXT", "MATCHES"), "경기"
+        data = {"event": event, "title_sub": title.replace("{kind}", kind), "title_words": words, "date": date_label or subtitle, "rows": rows,
                 "footer": footer, "more": f"외 {extra}경기" if extra > 0 else None,
                 "empty_message": "이 날은 예정된 경기가 없습니다."}
         return await _render(render_schedule_card, data, fetched)

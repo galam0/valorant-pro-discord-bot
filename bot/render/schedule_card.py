@@ -94,9 +94,10 @@ def render_schedule_card(data: dict[str, Any], logos: dict[str, Any] | None = No
         e, ef = fit_text(d, ev.upper(), "bold", 28, W - PAD * 2, 16)
         d.text((W // 2, 62), e, font=ef, fill=GOLD, anchor="mm")
         d.line([(W // 2 - 60, 94), (W // 2 + 60, 94)], fill=GOLD_DARK, width=2)
-    _gradient_text(img, (W // 2, 205), "NEXT", 210, 700, (GOLD_LIGHT, GOLD, GOLD_DARK))
+    gold_word, white_word = data.get("title_words", ("NEXT", "MATCHES"))
+    _gradient_text(img, (W // 2, 205), gold_word, 210, 700, (GOLD_LIGHT, GOLD, GOLD_DARK))
     d = ImageDraw.Draw(img)
-    big, bf = fit_text(d, "MATCHES", "heavy", 190, W - PAD * 2, 90)
+    big, bf = fit_text(d, white_word, "heavy", 190, W - PAD * 2, 90)
     d.text((W // 2, 385), big, font=bf, fill=TEXT, anchor="mm")
     d.text((W // 2, 505), data.get("title_sub", ""), font=font("bold", 26), fill=MUTED, anchor="mm")
 
