@@ -372,3 +372,30 @@ class Prediction(Base):
         Index("ix_predictions_match_status", "match_id", "status"),
         Index("ix_predictions_user", "guild_id", "user_id", "status"),
     )
+
+
+class Profile(Base):
+    """프로필 꾸미기 설정 (서버·유저별)."""
+
+    __tablename__ = "profiles"
+
+    guild_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    theme: Mapped[str] = mapped_column(String(30), nullable=False, server_default="theme_default")
+    frame: Mapped[str] = mapped_column(String(30), nullable=False, server_default="frame_none")
+    title: Mapped[str] = mapped_column(String(30), nullable=False, server_default="title_none")
+    fav_team: Mapped[str | None] = mapped_column(String(120))
+    fav_agent: Mapped[str | None] = mapped_column(String(40))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class Purchase(Base):
+    """상점에서 산 꾸미기 아이템. (서버, 유저, 아이템)당 한 번만 살 수 있다."""
+
+    __tablename__ = "purchases"
+
+    guild_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    item_id: Mapped[str] = mapped_column(String(30), primary_key=True)
+    price: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

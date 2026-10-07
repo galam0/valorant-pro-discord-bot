@@ -672,5 +672,26 @@ class GameAnimTest(unittest.TestCase):
         self.assertEqual(opts[idx], "제트")
 
 
+class ProfileShopTest(unittest.TestCase):
+    def test_catalog(self):
+        from bot.services import shop_catalog as c
+        self.assertEqual(len(c.BY_ID), len(c.ITEMS))
+        for kind, default in c.DEFAULTS.items():
+            self.assertIn(default, c.FREE_IDS)
+            self.assertEqual(c.BY_ID[default].kind, kind)
+        self.assertTrue(c.owned_or_free("theme_default", set()))
+        self.assertFalse(c.owned_or_free("frame_gold", set()))
+        self.assertTrue(c.owned_or_free("frame_gold", {"frame_gold"}))
+        self.assertLessEqual(len([i for i in c.ITEMS if i.price > 0]), 25)   # 상점 선택 메뉴 한도
+
+    def test_profile_card_renders(self):
+        from bot.render.profile_card import FRAME_COLORS, THEMES, render_profile_card
+        base = dict(name="테스트", title="뉴비", vp=1234, rank=1, pred_win=1, pred_total=2, quiz_week=1, quiz_limit=5,
+                    fav_team=None, fav_agent="제트")
+        for theme in THEMES:
+            for frame in ["frame_none", "frame_rainbow", *FRAME_COLORS]:
+                self.assertTrue(render_profile_card(dict(base, theme=theme, frame=frame)).startswith(b"\x89PNG"))
+
+
 if __name__ == "__main__":
     unittest.main()

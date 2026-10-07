@@ -17,7 +17,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bot.database.models import Match, Prediction, Wallet, WalletLedger
+from bot.database.models import Match, Prediction, Profile, Purchase, Wallet, WalletLedger
 
 STARTING_VP = 500      # 서버에서 처음 지갑을 만들 때 받는 VP
 CHECKIN_VP = 100       # 하루 출석 보상
@@ -177,3 +177,52 @@ async def my_predictions(session: AsyncSession, guild_id: int, user_id: int, lim
         .order_by(Prediction.id.desc()).limit(limit)
     )
     return list(rows.scalars())
+
+
+# ---------------------------------------------------------------------------
+# 프로필·상점
+# ---------------------------------------------------------------------------
+
+
+class AlreadyOwned(Exception):
+    pass
+
+
+async def get_profile(session: AsyncSession, guild_id: int, user_id: int) -> Profile | None:
+    return await session.get(Profile, (guild_id, user_id))
+
+
+async def upsert_profile(session: AsyncSession, guild_id: int, user_id: int, **fields) -> None:
+    """프로필 설정 일부를 바꾼다 (없으면 만든다)."""
+    stmt = pg_insert(Profile).values(guild_id=guild_id, user_id=user_id, **fields)
+    stmt = stmt.on_conflict_do_update(index_elements=[Profile.guild_id, Profile.user_id],
+                                      set_={**fields, "updated_at": func.now()})
+    await session.execute(stmt)
+
+
+async def owned_items(session: AsyncSession, guild_id: int, user_id: int) -> set[str]:
+    rows = await session.execute(select(Purchase.item_id).where(Purchase.guild_id == guild_id, Purchase.user_id == user_id))
+    return {r for (r,) in rows}
+
+
+async def buy_item(session: AsyncSession, guild_id: int, user_id: int, item_id: str, price: int) -> int:
+    """아이템 구매. 이미 있으면 AlreadyOwned, 잔액이 모자라면 InsufficientFunds. 새 잔액.
+
+    (서버, 유저, 아이템) 기본키 덕분에 같은 아이템을 동시에 두 번 눌러도 한 번만 구매된다.
+    """
+    row = (await session.execute(
+        pg_insert(Purchase).values(guild_id=guild_id, user_id=user_id, item_id=item_id, price=price)
+        .on_conflict_do_nothing().returning(Purchase.item_id)
+    )).first()
+    if row is None:
+        raise AlreadyOwned()
+    return await apply_delta(session, guild_id, user_id, -price, "shop", ref=item_id)
+
+
+async def prediction_record(session: AsyncSession, guild_id: int, user_id: int) -> tuple[int, int]:
+    """(적중 수, 정산된 예측 수) — 환불·취소는 제외."""
+    won = (await session.execute(select(func.count()).select_from(Prediction).where(
+        Prediction.guild_id == guild_id, Prediction.user_id == user_id, Prediction.status == "won"))).scalar_one()
+    lost = (await session.execute(select(func.count()).select_from(Prediction).where(
+        Prediction.guild_id == guild_id, Prediction.user_id == user_id, Prediction.status == "lost"))).scalar_one()
+    return int(won), int(won) + int(lost)

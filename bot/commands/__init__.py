@@ -21,6 +21,7 @@ EXTENSIONS = (
     "bot.commands.bracket",
     "bot.commands.economy",
     "bot.commands.games",
+    "bot.commands.profile",
     "bot.commands.admin",
 )
 
