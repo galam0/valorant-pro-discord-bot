@@ -1,0 +1,29 @@
+# Render Blueprint — 무료 Web Service 구성
+# Render 대시보드 > New > Blueprint 에서 이 저장소를 선택하면 자동 생성됩니다.
+#
+# DB는 Render 무료 PostgreSQL(30일 만료) 대신 Neon 무료 PostgreSQL(만료 없음)을 사용하므로
+# 여기서는 DB를 만들지 않고 DATABASE_URL을 직접 입력받습니다.
+services:
+  - type: web
+    name: valorant-pro-discord-bot
+    runtime: python
+    plan: free
+    region: singapore          # 한국과 가장 가까운 리전
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m bot.main
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: DISCORD_TOKEN
+        sync: false            # 대시보드에서 직접 입력 (저장소에 커밋되지 않음)
+      - key: DATABASE_URL
+        sync: false            # Phase 2에서 Neon 연결 문자열 입력
+      - key: DEV_GUILD_ID
+        sync: false
+      - key: ADMIN_USER_IDS
+        sync: false
+      - key: LOG_LEVEL
+        value: INFO
