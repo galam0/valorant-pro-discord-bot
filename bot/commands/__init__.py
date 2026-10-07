@@ -16,6 +16,7 @@ EXTENSIONS = (
     "bot.commands.team",
     "bot.commands.player",
     "bot.commands.matches",
+    "bot.commands.ranking",
     "bot.commands.admin",
 )
 

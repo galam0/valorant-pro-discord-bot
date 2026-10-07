@@ -699,6 +699,53 @@ def parse_match_full(html: str, vlr_id: int) -> MatchFull:
 
 
 # ---------------------------------------------------------------------------
+# 팀 랭킹 (/rankings/{region})  — 선택자: .rank-item > .rank-item-rank-num, a.rank-item-team,
+# .rank-item-team-country, .rank-item-rating(첫 번째 = 점수), .rank-item-streak(data-sort-value 부호 = 연승/연패)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RankingEntry:
+    rank: int
+    vlr_id: int
+    name: str
+    country: str | None
+    rating: int | None
+    streak: int | None  # +N 연승, -N 연패
+    logo_url: str | None
+
+
+def parse_rankings(html: str) -> list[RankingEntry]:
+    entries: list[RankingEntry] = []
+    for item in _soup(html).select(".rank-item"):
+        link = item.select_one("a.rank-item-team")
+        vlr_id = _id_from(r"/team/(\d+)", link.get("href") if link else None)
+        rank = _int_or_none(_text(item.select_one(".rank-item-rank-num")))
+        if link is None or vlr_id is None or rank is None:
+            continue
+        name = _own_text(link.select_one(".ge-text")) or str(link.get("data-sort-value") or "")
+        rating_el = item.select_one(".rank-item-rating")
+        streak_el = item.select_one(".rank-item-streak")
+        streak = None
+        if streak_el is not None:
+            try:
+                streak = int(float(str(streak_el.get("data-sort-value"))))
+            except (TypeError, ValueError):
+                streak = None
+        img = link.find("img")
+        entries.append(RankingEntry(
+            rank=rank, vlr_id=vlr_id, name=name,
+            country=_text(item.select_one(".rank-item-team-country")) or None,
+            rating=_int_or_none(_text(rating_el).split(" ")[0]) if rating_el else None,
+            streak=streak,
+            logo_url=image_url(img.get("src")) if img is not None else None,
+        ))
+    if not entries:
+        raise ParseError("랭킹 표를 찾지 못했습니다 (페이지 구조가 바뀌었을 수 있음)")
+    return entries
+
+
+# ---------------------------------------------------------------------------
 # 스크래퍼 (네트워크 + 시간대 보정)
 # ---------------------------------------------------------------------------
 
@@ -733,6 +780,10 @@ class VlrScraper:
         html = await self._get(f"/{vlr_id}")
         # 경기 페이지는 400KB 정도라 파싱에 시간이 걸린다 → 별도 스레드에서 (봇이 멈추지 않게)
         return await asyncio.to_thread(parse_match_full, html, vlr_id)
+
+    async def fetch_rankings(self, region: str) -> list[RankingEntry]:
+        path = "/rankings" if region == "world" else f"/rankings/{region}"
+        return await asyncio.to_thread(parse_rankings, await self._get(path))
 
     async def fetch_upcoming_matches(self) -> list[MatchListItem]:
         items = parse_matches_list(await self._get("/matches"))
