@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sys
@@ -30,8 +31,9 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
     stream=sys.stdout,
 )
-# discord.py 내부 로그는 너무 시끄러우므로 한 단계 낮춤
 logging.getLogger("discord").setLevel(logging.WARNING)
+# 음성 기능을 쓰지 않으므로 "PyNaCl is not installed" 경고는 숨김
+logging.getLogger("discord.client").setLevel(logging.ERROR)
 logger = logging.getLogger("valobot")
 
 
@@ -52,7 +54,57 @@ DEV_GUILD_ID: int | None = _parse_guild_id(os.getenv("DEV_GUILD_ID"))
 # 로컬에서는 PORT가 없으므로 헬스체크 서버를 띄우지 않는다.
 HEALTH_PORT: int | None = int(os.environ["PORT"]) if os.getenv("PORT", "").isdigit() else None
 
+# Discord(Cloudflare) 429 차단 시 재시도 대기 시간 (초)
+RETRY_BASE_DELAY = 60
+RETRY_MAX_DELAY = 30 * 60
+
 EMBED_COLOR = discord.Color.from_rgb(255, 70, 85)  # VALORANT 레드
+
+
+# ---------------------------------------------------------------------------
+# 헬스체크 HTTP 서버
+# ---------------------------------------------------------------------------
+# Discord 로그인과 무관하게 프로세스 시작 직후 띄운다.
+#  - Render는 포트가 열려야 배포 성공으로 판단한다.
+#  - 로그인이 429로 막혀 재시도 대기 중이어도 프로세스가 살아 있어야 한다.
+#    (프로세스가 죽으면 Render가 즉시 재시작 → 또 로그인 시도 → 차단이 길어짐)
+#  - UptimeRobot이 /health 를 5분마다 호출해 무료 인스턴스가 잠들지 않게 한다.
+
+
+class HealthServer:
+    def __init__(self) -> None:
+        self.started_at: float = time.time()
+        self.bot: ValorantBot | None = None
+        self.state: str = "starting"  # starting | ok | rate_limited | error
+        self.next_retry_at: float | None = None
+        self._runner: web.AppRunner | None = None
+
+    async def _handle(self, _request: web.Request) -> web.Response:
+        ready = self.bot is not None and self.bot.is_ready()
+        body = {
+            "status": "ok" if ready else self.state,
+            "discord_ready": ready,
+            "latency_ms": round(self.bot.latency * 1000) if ready and self.bot else None,
+            "uptime_s": int(time.time() - self.started_at),
+            "next_retry_in_s": (
+                max(0, int(self.next_retry_at - time.time())) if self.next_retry_at else None
+            ),
+        }
+        # 항상 200: 로그인 재시도 중에도 Render가 서비스를 내리지 않게 한다.
+        return web.json_response(body)
+
+    async def start(self, port: int) -> None:
+        app = web.Application()
+        app.router.add_get("/", self._handle)
+        app.router.add_get("/health", self._handle)
+        self._runner = web.AppRunner(app, access_log=None)
+        await self._runner.setup()
+        await web.TCPSite(self._runner, host="0.0.0.0", port=port).start()
+        logger.info("헬스체크 서버 시작: 0.0.0.0:%d/health", port)
+
+    async def stop(self) -> None:
+        if self._runner is not None:
+            await self._runner.cleanup()
 
 
 # ---------------------------------------------------------------------------
@@ -65,47 +117,9 @@ class ValorantBot(commands.Bot):
         # Slash Command만 사용하므로 message_content 같은 특권 인텐트는 필요 없음
         intents = discord.Intents.default()
         super().__init__(command_prefix=commands.when_mentioned, intents=intents)
-        self.started_at: float = time.time()
-        self._health_runner: web.AppRunner | None = None
-
-    # -- 헬스체크 HTTP 서버 -------------------------------------------------
-    # Render 무료 Web Service는 15분간 요청이 없으면 잠들기 때문에,
-    # UptimeRobot 같은 외부 모니터가 /health 를 주기적으로 호출해 깨워둔다.
-    # aiohttp는 discord.py 의존성이라 추가 설치가 필요 없다.
-
-    async def _health(self, _request: web.Request) -> web.Response:
-        ready = self.is_ready()
-        body = {
-            "status": "ok" if ready else "starting",
-            "discord_ready": ready,
-            "latency_ms": round(self.latency * 1000) if ready else None,
-            "uptime_s": int(time.time() - self.started_at),
-        }
-        # 봇이 아직 로그인 중이어도 200을 반환해 Render 배포가 실패하지 않게 한다.
-        return web.json_response(body)
-
-    async def _start_health_server(self, port: int) -> None:
-        app = web.Application()
-        app.router.add_get("/", self._health)
-        app.router.add_get("/health", self._health)
-        runner = web.AppRunner(app, access_log=None)
-        await runner.setup()
-        await web.TCPSite(runner, host="0.0.0.0", port=port).start()
-        self._health_runner = runner
-        logger.info("헬스체크 서버 시작: 0.0.0.0:%d/health", port)
-
-    async def close(self) -> None:
-        if self._health_runner is not None:
-            await self._health_runner.cleanup()
-        await super().close()
-
-    # -- 라이프사이클 --------------------------------------------------------
 
     async def setup_hook(self) -> None:
-        """봇 로그인 직후 1회 실행. 헬스 서버를 띄우고 Slash Command를 동기화한다."""
-        if HEALTH_PORT:
-            await self._start_health_server(HEALTH_PORT)
-
+        """로그인 직후 1회 실행. Slash Command를 Discord에 동기화한다."""
         register_commands(self.tree)
 
         if DEV_GUILD_ID:
@@ -166,7 +180,11 @@ def register_commands(tree: app_commands.CommandTree) -> None:
         interaction: discord.Interaction, error: app_commands.AppCommandError
     ) -> None:
         """모든 Slash Command 오류를 잡아 봇이 죽지 않게 하고 사용자에게 한국어로 안내."""
-        logger.exception("명령어 처리 중 오류 (/%s)", getattr(interaction.command, "name", "?"), exc_info=error)
+        logger.error(
+            "명령어 처리 중 오류 (/%s)",
+            getattr(interaction.command, "name", "?"),
+            exc_info=error,
+        )
         message = "⚠️ 명령어를 처리하는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
         try:
             if interaction.response.is_done():
@@ -178,8 +196,50 @@ def register_commands(tree: app_commands.CommandTree) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Entry point
+# 실행 루프 (429 차단 시 프로세스를 죽이지 않고 지수 백오프로 재시도)
 # ---------------------------------------------------------------------------
+
+
+def _is_cloudflare_ban(exc: discord.HTTPException) -> bool:
+    text = str(exc)
+    return exc.status == 429 and ("cloudflare" in text.lower() or "1015" in text)
+
+
+async def run_forever(token: str, health: HealthServer | None) -> None:
+    delay = RETRY_BASE_DELAY
+    while True:
+        bot = ValorantBot()
+        if health:
+            health.bot = bot
+            health.state = "starting"
+            health.next_retry_at = None
+        try:
+            async with bot:
+                await bot.start(token)
+            return  # 정상 종료(close 호출)
+        except discord.HTTPException as exc:
+            if exc.status != 429:
+                raise
+            kind = "Cloudflare IP 차단(1015)" if _is_cloudflare_ban(exc) else "Discord 속도 제한"
+            # HTML 전문 대신 한 줄만 기록
+            logger.warning("로그인 실패: %s. %d초 후 재시도합니다.", kind, delay)
+            if health:
+                health.state = "rate_limited"
+                health.next_retry_at = time.time() + delay
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, RETRY_MAX_DELAY)
+
+
+async def amain(token: str) -> None:
+    health: HealthServer | None = None
+    if HEALTH_PORT:
+        health = HealthServer()
+        await health.start(HEALTH_PORT)
+    try:
+        await run_forever(token, health)
+    finally:
+        if health:
+            await health.stop()
 
 
 def main() -> None:
@@ -187,10 +247,10 @@ def main() -> None:
         logger.critical("DISCORD_TOKEN 환경변수가 없습니다. .env 파일을 확인하세요.")
         sys.exit(1)
 
-    bot = ValorantBot()
     try:
-        # log_handler=None: 위에서 설정한 logging 설정을 그대로 사용
-        bot.run(DISCORD_TOKEN, log_handler=None)
+        asyncio.run(amain(DISCORD_TOKEN))
+    except KeyboardInterrupt:
+        logger.info("종료합니다.")
     except discord.LoginFailure:
         logger.critical("Discord 로그인 실패: 토큰이 올바르지 않습니다.")
         sys.exit(1)
