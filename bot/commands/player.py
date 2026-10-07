@@ -12,9 +12,9 @@ from discord.ext import commands
 from bot.database.database import db
 from bot.embeds.common import COLOR_INFO, error_embed
 from bot.embeds.player import player_embed
-from bot.render.cards import build_player_card
+from bot.render.cards import build_player_card, build_player_stats_card
 from bot.scrapers.http import ScrapeError
-from bot.services import player_service
+from bot.services import player_service, player_stats_service
 from bot.utils.config import settings
 from bot.views.player import PlayerView
 from bot.worker_bridge import WorkerUnavailable
@@ -71,29 +71,68 @@ async def send_player(interaction: discord.Interaction, query: str, *, force: bo
         await interaction.followup.send(content=content, embed=player_embed(result.detail), view=view)
 
 
+TIMESPAN_CHOICES = [
+    app_commands.Choice(name="최근 30일", value="30d"),
+    app_commands.Choice(name="최근 60일", value="60d"),
+    app_commands.Choice(name="최근 90일", value="90d"),
+    app_commands.Choice(name="전체 기간", value="all"),
+]
+
+
+async def send_player_stats(interaction: discord.Interaction, query: str, timespan: str) -> bool:
+    """VLR 통계 카드를 보낸다. 보냈으면 True."""
+    try:
+        page, player, guessed, widened = await player_stats_service.get_player_stats(query, timespan)
+    except player_stats_service.PlayerNotFound as exc:
+        if exc.candidates:
+            names = ", ".join(f"`{p.nickname}`" for p in exc.candidates)
+            msg = f"'{query}' 선수를 하나로 특정하지 못했습니다.\n혹시 이 선수인가요? {names}"
+        else:
+            msg = f"'{query}' 선수 정보를 찾을 수 없습니다.\n닉네임 철자를 확인해주세요. (팀 로스터에 등록된 선수만 검색돼요)"
+        await interaction.followup.send(embed=error_embed(msg))
+        return False
+    except player_stats_service.NoVlrProfile as exc:
+        await interaction.followup.send(embed=error_embed(f"**{exc.nickname}** 선수는 VLR 선수 정보가 연결돼 있지 않아 통계를 볼 수 없습니다."))
+        return False
+    except ScrapeError:
+        await interaction.followup.send(embed=error_embed("VLR에서 선수 통계를 가져오지 못했습니다. 잠시 후 다시 시도해주세요."))
+        return False
+
+    notes = []
+    if guessed:
+        notes.append(f"🔎 '{query}' → **{player.nickname}** 선수로 찾았어요.")
+    if widened:
+        notes.append("ℹ️ 선택한 기간에 경기 기록이 없어 전체 기간 통계를 보여드려요.")
+    content = "\n".join(notes) or None
+    png = await build_player_stats_card(page)
+    if png is not None:
+        file = discord.File(BytesIO(png), filename=f"player_stats_{page.vlr_id}.png")
+        await interaction.followup.send(content=content, file=file)
+    else:
+        lines = [f"**{a.agent}** · 레이팅 {a.rating} · ACS {a.acs} · K:D {a.kd}" for a in page.agents[:8]]
+        embed = discord.Embed(title=f"{page.nickname} 통계", description="\n".join(lines) or "통계가 없습니다.", color=COLOR_INFO)
+        await interaction.followup.send(content=content, embed=embed)
+    return True
+
+
 class PlayerCommands(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @app_commands.command(name="선수", description="프로 선수의 감도·DPI·장비·크로스헤어를 보여줍니다.")
-    @app_commands.describe(닉네임="선수 닉네임 (예: stax, t3xture). 철자가 조금 달라도 찾아요")
-    async def player(self, interaction: discord.Interaction, 닉네임: str) -> None:
-        if not settings.player_command_enabled and interaction.user.id not in settings.admin_user_ids:
-            await interaction.response.send_message(
-                embed=discord.Embed(
-                    title="🚧 아직 사용할 수 없는 명령어입니다",
-                    description="`/선수` 기능은 준비 중입니다. 조금만 기다려주세요!",
-                    color=COLOR_INFO,
-                ),
-                ephemeral=True,
-            )
-            return
+    @app_commands.command(name="선수", description="프로 선수의 요원별 통계(레이팅·ACS·K:D 등)를 보여줍니다.")
+    @app_commands.describe(닉네임="선수 닉네임 (예: stax, f0rsakeN). 철자가 조금 달라도 찾아요", 기간="통계 기간 (기본: 최근 90일)")
+    @app_commands.choices(기간=TIMESPAN_CHOICES)
+    async def player(self, interaction: discord.Interaction, 닉네임: str,
+                     기간: app_commands.Choice[str] | None = None) -> None:
         if not db.configured:
             await interaction.response.send_message(embed=error_embed("현재 데이터를 불러올 수 없습니다."), ephemeral=True)
             return
         await interaction.response.defer(thinking=True)
         try:
-            await send_player(interaction, 닉네임)
+            await send_player_stats(interaction, 닉네임, 기간.value if 기간 else "90d")
+            # 감도·장비 설정(ProSettings/관리자 입력)이 이미 저장된 선수는 설정 카드도 같이 보여준다
+            if settings.player_command_enabled or interaction.user.id in settings.admin_user_ids:
+                await send_player(interaction, 닉네임)
         except Exception:
             log.exception("선수 조회 실패: %s", 닉네임)
             await interaction.followup.send(embed=error_embed("현재 데이터를 불러올 수 없습니다. 잠시 후 다시 시도해주세요."))

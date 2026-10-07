@@ -3,7 +3,7 @@
 VALORANT 프로팀·프로 선수 정보를 Discord Slash Command로 조회하는 봇입니다.
 데이터는 [VLR.gg](https://www.vlr.gg)와 [ProSettings.net](https://prosettings.net)의 공개 정보를 수집해 PostgreSQL에 저장한 뒤 제공합니다.
 
-> 현재 상태: 팀·경기·전적·랭킹·비교 + 자동 갱신 동작 중. `/선수`는 ProSettings 허가 전까지 준비 중(관리자만 사용)
+> 현재 상태: 팀·경기·전적·랭킹·비교 + 자동 갱신 동작 중. `/선수`는 VLR 요원별 통계 카드 제공(감도·장비는 ProSettings 허가 전까지 준비 중)
 
 ## 주요 기능 (로드맵)
 
@@ -11,7 +11,7 @@ VALORANT 프로팀·프로 선수 정보를 Discord Slash Command로 조회하�
 |---|---|---|
 | `/ping` | 봇·DB 응답 속도 확인 | ✅ |
 | `/팀 <이름>` | 팀 로고·로스터·코치진·최근 경기·대회 (한국어 별칭 검색) | ✅ 기본 |
-| `/선수 <닉네임>` | 선수 사진·감도·DPI·eDPI·장비·크로스헤어 미리보기 (오타 보정: texture → t3xture) | ✅ |
+| `/선수 <닉네임> [기간]` | VLR 요원별 통계 카드(레이팅·ACS·K:D·KAST·ADR). 기간: 30/60/90일·전체. 감도·장비 카드는 `PLAYER_COMMAND_ENABLED=1`이거나 관리자일 때 함께 표시 | ✅ |
 | `/경기 [팀]` | 진행 중·예정 경기, 팀별 최근·예정 경기 (메뉴로 경기 상세 열기) | ✅ |
 | `/전적 <팀>` | 진행 중 또는 최근 경기의 맵별 점수·선수 K/D/A·ACS·ADR·HS% | ✅ |
 | `/랭킹 [지역]` | VLR.gg 팀 랭킹 (세계·한국·유럽 등 13개 지역, 1시간 캐시) | ✅ |
@@ -158,7 +158,7 @@ Render 무료 서버는 리전별로 IP를 여러 서비스가 공유하므로, 
 ProSettings.net은 Cloudflare로 봇 요청을 막고 있어서(PC에서도 robots.txt부터 403), 현재는 **수집하지 않습니다** (`PROSETTINGS_ENABLED=0`).
 사이트 약관상 서면 허가가 필요해 운영사에 허가를 요청해 두었습니다.
 
-- `/선수`는 관리자(`ADMIN_USER_IDS`)만 사용할 수 있고, 일반 사용자에게는 "준비 중"을 안내합니다. (`PLAYER_COMMAND_ENABLED=1`로 공개)
+- `/선수` 통계(VLR)는 모두 사용 가능. 감도·장비 설정 카드는 관리자(`ADMIN_USER_IDS`)만 함께 표시됩니다. (`PLAYER_COMMAND_ENABLED=1`로 공개)
 - 선수 설정은 `/관리 선수설정등록`으로 직접 입력할 수 있고, 입력한 값만 `/선수`에 표시됩니다.
 - 허가를 받으면 `PROSETTINGS_ENABLED=1`로 켭니다. 직접 요청이 계속 막히면 예전의 "PC 수집기" 방식(봇이 작업을 대기시키고 내 PC가 대신 가져오는 구조)을
   git 기록에서 되살릴 수 있습니다: `bot/local_worker.py`, `run_worker.bat` (삭제 커밋 이전 버전). 봇 쪽 `bot/worker_bridge.py`는 남아 있습니다.

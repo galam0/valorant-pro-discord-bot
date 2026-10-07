@@ -883,6 +883,125 @@ def parse_event_bracket(html: str, vlr_id: int) -> EventBracket:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------- 선수 통계 (/player/{id})
+
+@dataclass
+class AgentStat:
+    agent: str
+    uses: int | None = None
+    use_pct: int | None = None
+    rounds: int | None = None
+    rating: float | None = None
+    acs: float | None = None
+    kd: float | None = None
+    kast: int | None = None
+    adr: float | None = None
+    kpr: float | None = None
+    apr: float | None = None
+    fkpr: float | None = None
+    kills: int | None = None
+    deaths: int | None = None
+    assists: int | None = None
+    fk: int | None = None
+    fd: int | None = None
+
+
+@dataclass
+class PlayerStatsPage:
+    vlr_id: int
+    nickname: str
+    real_name: str | None = None
+    country_code: str | None = None
+    country_name: str | None = None
+    photo_url: str | None = None
+    team_name: str | None = None
+    team_id: int | None = None
+    team_logo_url: str | None = None
+    timespan: str = "90d"
+    agents: list[AgentStat] = field(default_factory=list)
+
+
+def _num(text: str) -> float | None:
+    m = re.search(r"-?\d+(?:\.\d+)?", (text or "").replace(",", ""))
+    return float(m.group()) if m else None
+
+
+def _int_num(text: str) -> int | None:
+    v = _num(text)
+    return int(v) if v is not None else None
+
+
+def _parse_agent_row(tr: Tag) -> AgentStat | None:
+    cells = tr.find_all("td", recursive=False)
+    if len(cells) < 10:
+        return None
+    img = cells[0].find("img")
+    agent = (img.get("alt") if img else "") or ""
+    if not agent and img and img.get("src"):
+        agent = img["src"].rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    agent = agent.strip()
+    if not agent:
+        return None
+    use_text = _text(cells[1])
+    uses_m = re.search(r"\((\d+)\)", use_text)
+    pct_m = re.search(r"(\d+)\s*%", use_text)
+    t = [_text(c) for c in cells]
+
+    def at(i: int) -> str:
+        return t[i] if i < len(t) else ""
+
+    return AgentStat(
+        agent=agent,
+        uses=int(uses_m.group(1)) if uses_m else None,
+        use_pct=int(pct_m.group(1)) if pct_m else None,
+        rounds=_int_num(at(2)), rating=_num(at(3)), acs=_num(at(4)), kd=_num(at(5)),
+        kast=_int_num(at(6)), adr=_num(at(7)), kpr=_num(at(8)), apr=_num(at(9)),
+        fkpr=_num(at(10)),
+        kills=_int_num(at(11)), deaths=_int_num(at(12)), assists=_int_num(at(13)),
+        fk=_int_num(at(14)), fd=_int_num(at(15)),
+    )
+
+
+def parse_player_page(html: str, vlr_id: int, timespan: str = "90d") -> PlayerStatsPage:
+    """선수 페이지: 프로필 + 요원별 통계. 통계가 없는 기간이면 agents가 빈 리스트."""
+    soup = _soup(html)
+    header = soup.select_one(".player-header")
+    nick = _text(soup.select_one("h1.wf-title"))
+    if header is None or not nick:
+        raise ParseError(f"선수 페이지 구조를 찾지 못했습니다: {vlr_id}")
+    photo = header.select_one("img")
+    country_name = None
+    for div in header.select("div"):
+        if div.select_one("i.flag") and div.get_text(strip=True) and not div.find("div"):
+            country_name = _text(div)
+            break
+    team_a = soup.select_one('a.wf-module-item[href^="/team/"]')
+    team_name = team_logo = None
+    team_id = None
+    if team_a is not None:
+        team_id = _id_from(r"/team/(\d+)", team_a.get("href"))
+        name_el = team_a.select_one("div[style*='font-weight']") or team_a.select_one("div div")
+        team_name = _own_text(name_el) or _text(name_el) or None
+        timg = team_a.select_one("img")
+        team_logo = image_url(timg.get("src")) if timg else None
+    agents: list[AgentStat] = []
+    table = soup.select_one("table.st-table.mod-agent-rows") or soup.select_one("table.mod-agent-rows")
+    if table is not None:
+        for tr in table.select("tbody tr") or table.select("tr"):
+            row = _parse_agent_row(tr)
+            if row:
+                agents.append(row)
+    real = _text(header.select_one("h2.player-real-name")) or None
+    return PlayerStatsPage(
+        vlr_id=vlr_id, nickname=nick, real_name=real,
+        country_code=_flag_code(header), country_name=country_name,
+        photo_url=image_url(photo.get("src")) if photo else None,
+        team_name=team_name, team_id=team_id, team_logo_url=team_logo,
+        timespan=timespan, agents=agents,
+    )
+
+
+
 class VlrScraper:
     OFFSET_TTL = 6 * 3600  # 목록 시간대 오프셋 재측정 주기
 
@@ -916,6 +1035,10 @@ class VlrScraper:
 
     async def fetch_rankings(self, region: str) -> list[RankingEntry]:
         return await asyncio.to_thread(parse_rankings, await self._get(f"/rankings/{region}"))
+
+    async def fetch_player(self, vlr_id: int, timespan: str = "90d") -> PlayerStatsPage:
+        html = await self._get(f"/player/{vlr_id}/?timespan={timespan}")
+        return await asyncio.to_thread(parse_player_page, html, vlr_id, timespan)
 
     async def search_events(self, query: str) -> list[EventSearchResult]:
         html = await self._get(f"/search/?q={quote(query)}&type=events")

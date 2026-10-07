@@ -11,7 +11,8 @@ from bot.render.compare_card import render_compare_card
 from bot.render.player_card import render_player_card
 from bot.render.ranking_card import render_ranking_card
 from bot.render.bracket_card import render_bracket_card
-from bot.scrapers.vlr import ParseError, parse_event_bracket, parse_rankings, parse_search_events
+from bot.scrapers.vlr import ParseError, parse_event_bracket, parse_player_page, parse_rankings, parse_search_events
+from bot.render.player_stats_card import player_stats_data, render_player_stats_card
 from bot.services.ranking_service import _tokens, is_first_team
 from bot.utils.korean import flag_emoji
 
@@ -283,6 +284,54 @@ class SchedulerLiveJobTest(unittest.TestCase):
         scheduler.vlr = NS(fetch_upcoming_matches=AsyncMock(side_effect=RuntimeError("boom")))
         asyncio.run(scheduler.job_live())  # 예외가 밖으로 나오지 않음
         self.assertEqual(scheduler._live_ids, {7})
+
+PLAYER_HTML = """
+<div class="player-header"><div class="wf-avatar mod-player"><div><img src="//owcdn.net/img/aa.png" alt="f0rsakeN"></div></div>
+<div><div><h1 class="wf-title">
+  f0rsakeN </h1><h2 class="player-real-name ge-text-light">Jason Susanto</h2></div>
+<div class="ge-text-light"><i class="flag mod-id"></i> INDONESIA </div></div></div>
+<a class="wf-module-item mod-first" href="/team/624/paper-rex"><div><img src="//owcdn.net/img/bb.png"></div>
+<div><div style="font-weight: 500;"> Paper Rex </div><div class="ge-text-light">joined in February 2021</div></div></a>
+<table class="wf-table st-table mod-agent-rows"><thead><tr><th>Agent</th></tr></thead><tbody>
+<tr><td class="mod-agent"><img src="/img/vlr/game/agents/omen.png" alt="omen"></td><td class="mod-use">(17) 65%</td>
+<td>386</td><td>0.95</td><td>190.9</td><td>0.95</td><td>71%</td><td>127.2</td><td>0.68</td><td>0.34</td><td>0.83</td>
+<td>264</td><td>279</td><td>133</td><td>30</td><td>36</td></tr>
+<tr><td class="mod-agent"><img src="/img/vlr/game/agents/jett.png" alt="jett"></td><td class="mod-use">(9) 35%</td>
+<td>200</td><td>1.12</td><td>230.0</td><td>1.20</td><td>74%</td><td>150.0</td><td>0.80</td><td>0.20</td><td>0.10</td>
+<td>160</td><td>130</td><td>40</td><td>20</td><td>12</td></tr></tbody></table>
+"""
+
+
+class PlayerStatsTest(unittest.TestCase):
+    def test_parse(self):
+        page = parse_player_page(PLAYER_HTML, 9801, "90d")
+        self.assertEqual(page.nickname, "f0rsakeN")
+        self.assertEqual(page.real_name, "Jason Susanto")
+        self.assertEqual(page.country_code, "id")
+        self.assertEqual(page.team_name, "Paper Rex")
+        self.assertEqual(page.team_id, 624)
+        self.assertEqual(len(page.agents), 2)
+        a = page.agents[0]
+        self.assertEqual((a.agent, a.uses, a.use_pct, a.rounds), ("omen", 17, 65, 386))
+        self.assertEqual((a.rating, a.acs, a.kd, a.kast, a.adr), (0.95, 190.9, 0.95, 71, 127.2))
+        self.assertEqual((a.kills, a.deaths, a.assists, a.fk, a.fd), (264, 279, 133, 30, 36))
+
+    def test_empty_period(self):
+        html = PLAYER_HTML.split("<table")[0] + "<div>No agent data available for this period</div>"
+        self.assertEqual(parse_player_page(html, 1).agents, [])
+
+    def test_bad_page(self):
+        with self.assertRaises(ParseError):
+            parse_player_page("<html></html>", 1)
+
+    def test_card_data_and_render(self):
+        data = player_stats_data(parse_player_page(PLAYER_HTML, 9801))
+        self.assertEqual(data["summary"]["kda"], "424/409/173")
+        self.assertEqual(data["rows"][0]["agent"], "Omen")
+        png = render_player_stats_card(data, {})
+        self.assertTrue(png.startswith(b"\x89PNG"))
+        data["rows"] = []
+        self.assertTrue(render_player_stats_card(data, {}).startswith(b"\x89PNG"))
 
 
 if __name__ == "__main__":

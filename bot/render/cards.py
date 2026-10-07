@@ -21,6 +21,7 @@ from bot.render.bracket_card import render_bracket_card
 from bot.render.compare_card import render_compare_card
 from bot.render.match_card import render_match_card
 from bot.render.player_card import render_player_card
+from bot.render.player_stats_card import player_stats_data, render_player_stats_card
 from bot.render.ranking_card import render_ranking_card
 from bot.render.team_card import render_team_card
 from bot.utils.korean import STAFF_ROLES, country_ko, role_ko, stage_ko
@@ -365,4 +366,19 @@ async def build_bracket_card(bracket: Any, stale: bool = False) -> bytes | None:
         return await _render(render_bracket_card, data, logos)
     except Exception:
         log.exception("대진표 카드 생성 실패 (%s)", getattr(bracket, "name", "?"))
+        return None
+
+
+async def build_player_stats_card(page: Any) -> bytes | None:
+    """선수 통계 카드 PNG. 실패하면 None."""
+    if not render_enabled():
+        return None
+    try:
+        urls = {"photo": page.photo_url, "team_logo": page.team_logo_url}
+        for i, a in enumerate(page.agents):
+            urls[f"agent{i}"] = f"https://www.vlr.gg/img/vlr/game/agents/{a.agent.lower()}.png"
+        fetched = await images.fetch_many(urls)
+        return await _render(render_player_stats_card, player_stats_data(page), fetched)
+    except Exception:
+        log.exception("선수 통계 카드 생성 실패")
         return None
