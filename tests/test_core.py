@@ -350,14 +350,18 @@ class AutocompleteMatchTest(unittest.TestCase):
 
 class ScheduleCardTest(unittest.TestCase):
     ROWS = [
-        {"time": "오후 6:00", "team1": "Gen.G", "team2": "T1", "score1": 1, "score2": 0, "status": "live", "event": "VCT Pacific", "logo1": "a", "logo2": "b"},
-        {"time": "오후 9:00", "team1": "Paper Rex", "team2": "Nongshim RedForce", "score1": None, "score2": None, "status": "upcoming", "event": "VCT Pacific", "logo1": "a", "logo2": "b"},
-        {"time": "오후 3:00", "team1": "DRX", "team2": "Talon", "score1": 2, "score2": 1, "status": "completed", "event": "VCT Pacific – 플레이오프", "logo1": "a", "logo2": "b"},
+        {"tag1": "NRG", "tag2": "T1", "team1": "NRG", "team2": "T1", "score1": 1, "score2": 0, "status": "live",
+         "time": "18:00 KST", "time_utc": "09:00 UTC", "stage": "VCT Champions · 8강", "logo1": "a", "logo2": "b"},
+        {"tag1": "PRX", "tag2": "LOUD", "team1": "Paper Rex", "team2": "LOUD", "score1": None, "score2": None,
+         "status": "upcoming", "time": "21:00 KST", "time_utc": "12:00 UTC", "stage": "VCT Champions", "logo1": "a", "logo2": "b"},
+        {"tag1": "NSRF", "tag2": "TALON", "team1": "Nongshim RedForce", "team2": "Talon", "score1": 2, "score2": 1,
+         "status": "completed", "time": "15:00 KST", "time_utc": "06:00 UTC", "stage": "", "logo1": "a", "logo2": "b"},
     ]
 
     def test_render(self):
-        for rows, more in ((self.ROWS, "외 3경기"), ([], None)):
-            png = render_schedule_card({"title": "오늘의 경기 일정", "subtitle": "x", "rows": rows, "more": more, "footer": "f"}, {})
+        for rows, more, ev in ((self.ROWS, "외 3경기", "VCT Champions Shanghai 2026"), ([], None, "")):
+            png = render_schedule_card({"event": ev, "title_sub": "오늘의 경기", "date": "10월 7일 (수)",
+                                        "rows": rows, "more": more, "footer": "f"}, {})
             self.assertTrue(png.startswith(b"\x89PNG"))
 
 

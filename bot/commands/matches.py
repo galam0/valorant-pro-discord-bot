@@ -115,9 +115,9 @@ class MatchCommands(commands.Cog):
             return
 
         label = {-1: "어제", 0: "오늘", 1: "내일", 2: "모레"}[offset]
-        subtitle = f"{day.month}월 {day.day}일 ({_WEEKDAY[day.weekday()]}) · 한국 시간 · {len(listed)}경기"
-        footer = "출처: VLR.gg · 경기 목록은 1시간마다 자동 갱신"
-        png = await build_schedule_card(f"{label}의 경기 일정", subtitle, listed, footer)
+        date_label = f"{day.month}월 {day.day}일 ({_WEEKDAY[day.weekday()]})"
+        footer = f"한국 시간 기준 · 출처: VLR.gg · {len(listed)}경기"
+        png = await build_schedule_card(f"{label}의 경기", date_label, listed, footer, date_label)
         if png is not None:
             await interaction.followup.send(file=discord.File(BytesIO(png), filename="schedule.png"))
             return
