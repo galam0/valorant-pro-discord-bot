@@ -201,6 +201,74 @@ class AdminGroup(app_commands.Group, name="관리", description="관리자 전�
             color=COLOR_OK,
         ))
 
+    @app_commands.command(name="별칭추가", description="팀 검색 별칭을 추가합니다 (예: 젠지 → Gen.G).")
+    @app_commands.describe(팀="별칭을 붙일 팀 (이름·기존 별칭·VLR ID)", 별칭="새 별칭 (한글·영문 모두 가능, 띄어쓰기·기호는 무시됨)")
+    async def add_alias(self, interaction: discord.Interaction, 팀: str, 별칭: str) -> None:
+        await interaction.response.defer(ephemeral=True)
+        key = repo.normalize_key(별칭)
+        if len(key) < 2:
+            await interaction.followup.send(embed=error_embed("별칭은 기호·공백을 빼고 2글자 이상이어야 합니다."))
+            return
+        if len(key) > 40:
+            await interaction.followup.send(embed=error_embed("별칭이 너무 깁니다 (40자 이하)."))
+            return
+        async with db.session() as s:
+            lookup = await repo.find_team(s, 팀)
+            if lookup.team is None:
+                names = ", ".join(f"`{t.name}`" for t in lookup.candidates)
+                msg = f"'{팀}' 팀을 하나로 특정하지 못했습니다." + (f"\n혹시 이 팀인가요? {names}" if names else "\n먼저 `/관리 팀갱신`으로 팀을 수집해주세요.")
+                await interaction.followup.send(embed=error_embed(msg))
+                return
+            team = lookup.team
+            owner = await repo.get_alias_owner(s, 별칭)
+            if owner is not None:
+                who = "이 팀" if owner[1].id == team.id else f"**{owner[1].name}**"
+                await interaction.followup.send(embed=error_embed(f"'{별칭}' 별칭은 이미 {who}에서 사용 중입니다."))
+                return
+            await repo.add_team_alias(s, team.id, 별칭, source="manual")
+            await s.commit()
+            team_name = team.name
+        await interaction.followup.send(embed=discord.Embed(
+            title="✅ 별칭 추가", description=f"`{별칭}` → **{team_name}**\n이제 `/팀 {별칭}` 으로 검색할 수 있어요.", color=COLOR_OK))
+
+    @app_commands.command(name="별칭삭제", description="직접 추가한 팀 별칭을 삭제합니다.")
+    @app_commands.describe(별칭="삭제할 별칭")
+    async def remove_alias(self, interaction: discord.Interaction, 별칭: str) -> None:
+        await interaction.response.defer(ephemeral=True)
+        async with db.session() as s:
+            owner = await repo.get_alias_owner(s, 별칭)
+            if owner is None:
+                await interaction.followup.send(embed=error_embed(f"'{별칭}' 별칭을 찾을 수 없습니다."))
+                return
+            if owner[0].source != "manual":
+                await interaction.followup.send(embed=error_embed(
+                    f"'{별칭}'은 팀 이름에서 자동으로 만들어진 별칭이라 삭제할 수 없습니다."))
+                return
+            await repo.remove_manual_alias(s, 별칭)
+            await s.commit()
+            team_name = owner[1].name
+        await interaction.followup.send(embed=discord.Embed(
+            title="🗑️ 별칭 삭제", description=f"`{별칭}` (**{team_name}**) 별칭을 삭제했습니다.", color=COLOR_OK))
+
+    @app_commands.command(name="별칭목록", description="팀에 등록된 별칭을 확인합니다.")
+    @app_commands.describe(팀="팀 이름 또는 별칭")
+    async def list_aliases(self, interaction: discord.Interaction, 팀: str) -> None:
+        await interaction.response.defer(ephemeral=True)
+        async with db.session() as s:
+            lookup = await repo.find_team(s, 팀)
+            if lookup.team is None:
+                await interaction.followup.send(embed=error_embed(f"'{팀}' 팀을 찾을 수 없습니다."))
+                return
+            aliases = await repo.list_team_aliases(s, lookup.team.id)
+            name = lookup.team.name
+        manual = [a.alias for a in aliases if a.source == "manual"]
+        auto = [a.alias for a in aliases if a.source != "manual"]
+        embed = discord.Embed(title=f"🏷️ {name} 별칭", color=COLOR_INFO)
+        embed.add_field(name="직접 추가 (삭제 가능)", value=", ".join(f"`{a}`" for a in manual) or "없음", inline=False)
+        embed.add_field(name="자동 생성", value=", ".join(f"`{a}`" for a in auto)[:1000] or "없음", inline=False)
+        embed.set_footer(text="별칭은 공백·기호·대소문자를 구분하지 않아 소문자로 저장됩니다")
+        await interaction.followup.send(embed=embed)
+
     @app_commands.command(name="경기갱신", description="VLR.gg에서 진행 중·예정 경기와 최근 결과를 다시 가져옵니다.")
     @app_commands.checks.cooldown(1, 30)
     async def refresh_matches(self, interaction: discord.Interaction) -> None:

@@ -126,6 +126,37 @@ async def add_team_alias(session: AsyncSession, team_id: int, alias: str, source
     return (await session.execute(stmt)).scalar_one_or_none() is not None
 
 
+async def get_alias_owner(session: AsyncSession, alias: str) -> tuple[TeamAlias, Team] | None:
+    """이 별칭을 쓰는 팀 (없으면 None). alias 는 정규화 전 입력도 가능."""
+    key = normalize_key(alias)
+    if not key:
+        return None
+    row = (
+        await session.execute(
+            select(TeamAlias, Team).join(Team, Team.id == TeamAlias.team_id).where(TeamAlias.alias == key)
+        )
+    ).first()
+    return (row[0], row[1]) if row else None
+
+
+async def list_team_aliases(session: AsyncSession, team_id: int) -> list[TeamAlias]:
+    result = await session.execute(
+        select(TeamAlias).where(TeamAlias.team_id == team_id).order_by(TeamAlias.source, TeamAlias.alias)
+    )
+    return list(result.scalars())
+
+
+async def remove_manual_alias(session: AsyncSession, alias: str) -> bool:
+    """직접 등록한 별칭만 삭제 (자동 생성 별칭은 팀 갱신 때 다시 생기므로 삭제하지 않음)."""
+    key = normalize_key(alias)
+    if not key:
+        return False
+    result = await session.execute(
+        delete(TeamAlias).where(TeamAlias.alias == key, TeamAlias.source == "manual").returning(TeamAlias.id)
+    )
+    return result.first() is not None
+
+
 async def upsert_team_page(session: AsyncSession, page: TeamPage) -> int:
     """팀 페이지 전체를 저장하고 teams.id 를 반환한다."""
     now = utcnow()
