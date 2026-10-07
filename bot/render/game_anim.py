@@ -42,39 +42,165 @@ def _banner(img: Image.Image, text: str, color=TEXT) -> None:
 
 
 # ---------------------------------------------------------------------------
+# 스프라이트 (플랫 벡터 스타일: 단색 면 + 굵은 외곽선, 4배 크기로 그려서 줄여 계단 현상 없앰)
+# ---------------------------------------------------------------------------
+
+NAVY = (27, 36, 51)
+GOLD_L, GOLD_M, GOLD_D = (255, 228, 138), (255, 200, 61), (224, 162, 27)
+SS = 4
+SYMBOL_NAMES = ["🍒", "🍋", "🔔", "⭐", "💎"]
+_sprites: dict = {}
+
+
+def _canvas(size: int):
+    n = size * SS
+    img = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    return img, ImageDraw.Draw(img), n
+
+
+def _down(img: Image.Image, size: int) -> Image.Image:
+    return img.resize((size, size), Image.LANCZOS)
+
+
+def _star(cx, cy, ro, ri, rot=-math.pi / 2):
+    return [(cx + (ro if i % 2 == 0 else ri) * math.cos(rot + i * math.pi / 5),
+             cy + (ro if i % 2 == 0 else ri) * math.sin(rot + i * math.pi / 5)) for i in range(10)]
+
+
+def coin_sprite(face: str, size: int = 210) -> Image.Image:
+    key = ("coin", face, size)
+    if key in _sprites:
+        return _sprites[key]
+    img, d, n = _canvas(size)
+    p = n * 0.03
+    d.ellipse([p, p, n - p, n - p], fill=NAVY)
+    q = n * 0.065
+    d.ellipse([q, q, n - q, n - q], fill=GOLD_M)
+    r = n * 0.15
+    d.ellipse([r, r, n - r, n - r], outline=GOLD_D, width=int(n * 0.025))
+    d.arc([q + n * 0.03, q + n * 0.03, n - q - n * 0.03, n - q - n * 0.03], 200, 260, fill=GOLD_L, width=int(n * 0.035))
+    c = n / 2
+    if face == "앞":
+        d.polygon(_star(c, c + n * 0.015, n * 0.27, n * 0.115), fill=GOLD_D, outline=NAVY, width=int(n * 0.012))
+    else:
+        w, h = n * 0.24, n * 0.14
+        pts = [(c - w, c + h), (c - w, c - h * 0.8), (c - w * 0.5, c), (c, c - h * 1.3), (c + w * 0.5, c), (c + w, c - h * 0.8), (c + w, c + h)]
+        d.polygon(pts, fill=GOLD_D, outline=NAVY, width=int(n * 0.012))
+        for px, py in ((c - w, c - h * 0.8), (c, c - h * 1.3), (c + w, c - h * 0.8)):
+            d.ellipse([px - n * 0.035, py - n * 0.035, px + n * 0.035, py + n * 0.035], fill=GOLD_L, outline=NAVY, width=int(n * 0.01))
+        d.rectangle([c - w, c + h * 0.45, c + w, c + h], fill=NAVY)
+    out = _down(img, size)
+    _sprites[key] = out
+    return out
+
+
+def _coin_at(canvas: Image.Image, cx: float, cy: float, c: float, face: str, size: int = 210) -> None:
+    """c = cos(회전각): 1이면 정면, 0이면 옆면. 옆면은 얇은 금속 테두리로 보인다."""
+    spr = coin_sprite(face, size)
+    w = max(10, int(size * abs(c)))
+    flat = spr.resize((w, size), Image.LANCZOS)
+    thick = int((1 - abs(c)) * 16)
+    if thick > 0:
+        edge = Image.new("RGBA", flat.size, (176, 122, 16, 255))
+        edge.putalpha(flat.getchannel("A"))
+        for t in range(thick, 0, -2):
+            canvas.paste(edge, (int(cx - w / 2 + t), int(cy - size / 2)), edge)
+    canvas.paste(flat, (int(cx - w / 2), int(cy - size / 2)), flat)
+
+
+def die_sprite(value: int, size: int = 240, highlight: bool = False) -> Image.Image:
+    key = ("die", value, size, highlight)
+    if key in _sprites:
+        return _sprites[key]
+    img, d, n = _canvas(size)
+    m, rad, off = n * 0.05, n * 0.17, n * 0.045
+    d.rounded_rectangle([m + off, m + off, n - m, n - m], radius=rad, fill=NAVY)
+    d.rounded_rectangle([m, m, n - m - off, n - m - off], radius=rad, fill=(246, 243, 236), outline=GOLD_M if highlight else NAVY, width=int(n * 0.035))
+    bev = n * 0.06
+    d.rounded_rectangle([m + n * 0.05, m + n * 0.05, n - m - off - n * 0.05, n - m - off - n * 0.05], radius=rad * 0.7, outline=(226, 220, 207), width=int(bev * 0.5))
+    side = (n - 2 * m - off)
+    step, pr = side * 0.27, side * 0.075
+    cx = cy = m + side / 2
+    for dx, dy in _PIPS[value]:
+        x, y = cx + dx * step, cy + dy * step
+        big = 1.35 if value == 1 else 1.0
+        col = (232, 67, 79) if value == 1 else NAVY
+        d.ellipse([x - pr * big, y - pr * big, x + pr * big, y + pr * big], fill=col)
+    out = _down(img, size)
+    _sprites[key] = out
+    return out
+
+
+def symbol_sprite(name: str, size: int = 200) -> Image.Image:
+    key = ("sym", name, size)
+    if key in _sprites:
+        return _sprites[key]
+    img, d, n = _canvas(size)
+    ow = int(n * 0.035)
+    if name == "🍒":
+        for cx, cy in ((0.3, 0.68), (0.7, 0.72)):
+            d.line([(cx * n, cy * n), (0.52 * n, 0.2 * n)], fill=(60, 160, 80), width=int(n * 0.04))
+        d.polygon([(0.52 * n, 0.2 * n), (0.78 * n, 0.12 * n), (0.62 * n, 0.3 * n)], fill=(70, 190, 100), outline=NAVY, width=ow)
+        for cx, cy in ((0.3, 0.68), (0.7, 0.72)):
+            r = n * 0.2
+            d.ellipse([cx * n - r, cy * n - r, cx * n + r, cy * n + r], fill=(232, 67, 79), outline=NAVY, width=ow)
+            d.ellipse([cx * n - r * 0.55, cy * n - r * 0.6, cx * n - r * 0.15, cy * n - r * 0.25], fill=(255, 150, 160))
+    elif name == "🍋":
+        d.ellipse([0.1 * n, 0.25 * n, 0.9 * n, 0.75 * n], fill=(255, 224, 70), outline=NAVY, width=ow)
+        d.polygon([(0.86 * n, 0.44 * n), (0.97 * n, 0.5 * n), (0.86 * n, 0.56 * n)], fill=(255, 224, 70), outline=NAVY, width=ow)
+        d.polygon([(0.14 * n, 0.44 * n), (0.03 * n, 0.5 * n), (0.14 * n, 0.56 * n)], fill=(255, 224, 70), outline=NAVY, width=ow)
+        d.arc([0.2 * n, 0.32 * n, 0.55 * n, 0.6 * n], 190, 260, fill=(255, 245, 170), width=int(n * 0.04))
+    elif name == "🔔":
+        d.ellipse([0.44 * n, 0.08 * n, 0.56 * n, 0.2 * n], fill=GOLD_M, outline=NAVY, width=ow)
+        d.pieslice([0.2 * n, 0.15 * n, 0.8 * n, 0.75 * n], 180, 360, fill=GOLD_M, outline=NAVY, width=ow)
+        d.polygon([(0.2 * n, 0.45 * n), (0.8 * n, 0.45 * n), (0.9 * n, 0.76 * n), (0.1 * n, 0.76 * n)], fill=GOLD_M, outline=NAVY, width=ow)
+        d.rectangle([0.22 * n, 0.44 * n, 0.78 * n, 0.5 * n], fill=GOLD_M)
+        d.ellipse([0.4 * n, 0.74 * n, 0.6 * n, 0.92 * n], fill=GOLD_D, outline=NAVY, width=ow)
+        d.arc([0.3 * n, 0.25 * n, 0.5 * n, 0.5 * n], 190, 260, fill=GOLD_L, width=int(n * 0.04))
+    elif name == "⭐":
+        d.polygon(_star(n / 2, n * 0.54, n * 0.46, n * 0.2), fill=GOLD_M, outline=NAVY, width=ow)
+        d.polygon(_star(n / 2, n * 0.54, n * 0.22, n * 0.1), fill=GOLD_L)
+    else:
+        pts = [(0.2 * n, 0.3 * n), (0.33 * n, 0.1 * n), (0.67 * n, 0.1 * n), (0.8 * n, 0.3 * n), (0.5 * n, 0.9 * n)]
+        d.polygon(pts, fill=(90, 205, 245), outline=NAVY, width=ow)
+        d.polygon([(0.33 * n, 0.1 * n), (0.42 * n, 0.3 * n), (0.5 * n, 0.1 * n)], fill=(160, 232, 255))
+        d.polygon([(0.2 * n, 0.3 * n), (0.8 * n, 0.3 * n), (0.5 * n, 0.9 * n)], fill=(60, 170, 225))
+        d.line([(0.2 * n, 0.3 * n), (0.8 * n, 0.3 * n)], fill=NAVY, width=int(n * 0.025))
+    out = _down(img, size)
+    _sprites[key] = out
+    return out
+
+
+def _scene() -> Image.Image:
+    img = Image.new("RGB", (W, H), (30, 42, 58))
+    d = ImageDraw.Draw(img)
+    for i in range(-H, W, 46):                       # 은은한 대각선 줄무늬
+        d.line([(i, H), (i + H, 0)], fill=(35, 49, 67), width=14)
+    return img
+
+
+# ---------------------------------------------------------------------------
 # 동전
 # ---------------------------------------------------------------------------
 
 
-def _coin_face(d: ImageDraw.ImageDraw, cx: float, cy: float, rx: float, ry: float, face: str) -> None:
-    d.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=(214, 164, 32), outline=(120, 82, 10), width=4)
-    if rx > 8:
-        irx, iry = rx * 0.82, ry * 0.82
-        d.ellipse([cx - irx, cy - iry, cx + irx, cy + iry], fill=(243, 200, 70), outline=(176, 128, 20), width=3)
-    if rx > 26:
-        size = max(10, int(ry * 1.15 * min(1.0, rx / ry + 0.15)))
-        d.text((cx, cy), face, font=font("heavy", size), fill=(120, 82, 10), anchor="mm")
-
-
 def coin_gif(result: str) -> bytes:
     """result: '앞' | '뒤'. 동전이 튀어 오르며 돈다."""
-    R = 78
     half_turns = 10 if result == "앞" else 9      # 짝수 번 뒤집히면 앞면
     n = 26
     frames, durs = [], []
     for i in range(n):
         t = (i + 1) / n
-        e = 1 - (1 - t) ** 2.2                         # 점점 느려지게
+        e = 1 - (1 - t) ** 2.2
         theta = math.pi * half_turns * e
         c = math.cos(theta)
         face = "앞" if c >= 0 else "뒤"
-        rx = max(4.0, R * abs(c))
-        height = math.sin(math.pi * min(1.0, t * 1.1)) * 70 if t < 0.91 else 0
-        cy = H / 2 + 10 - height
-        img = _bg()
+        height = math.sin(math.pi * min(1.0, t * 1.1)) * 52 if t < 0.91 else 0
+        img = _scene()
         d = ImageDraw.Draw(img)
-        d.ellipse([W / 2 - 60 + (height * 0.2), H - 70, W / 2 + 60 - (height * 0.2), H - 50], fill=(8, 12, 18))
-        _coin_face(d, W / 2, cy, rx, R, face)
+        sw = 60 - height * 0.25
+        d.ellipse([W / 2 - sw, H - 78, W / 2 + sw, H - 58], fill=(22, 31, 44))
+        _coin_at(img, W / 2, H / 2 - 20 - height, c, face)
         frames.append(img)
         durs.append(60 + int(70 * t))
     final = frames[-1].copy()
@@ -92,18 +218,6 @@ _PIPS = {1: [(0, 0)], 2: [(-1, -1), (1, 1)], 3: [(-1, -1), (0, 0), (1, 1)], 4: [
          5: [(-1, -1), (1, -1), (0, 0), (-1, 1), (1, 1)], 6: [(-1, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (1, 1)]}
 
 
-def _die(value: int, size: int = 150, highlight: bool = False) -> Image.Image:
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    d.rounded_rectangle([2, 2, size - 3, size - 3], radius=size // 6, fill=(245, 242, 235),
-                        outline=GOLD if highlight else (170, 165, 155), width=5 if highlight else 3)
-    step, r = size * 0.27, size * 0.075
-    for dx, dy in _PIPS[value]:
-        x, y = size / 2 + dx * step, size / 2 + dy * step
-        d.ellipse([x - r, y - r, x + r, y + r], fill=RED if value == 1 else (30, 30, 36))
-    return img
-
-
 def dice_gif(result: int) -> bytes:
     rng = random.Random()
     n = 18
@@ -114,19 +228,19 @@ def dice_gif(result: int) -> bytes:
         v = result if i == n - 1 else rng.choice([x for x in range(1, 7) if x != last])
         last = v
         shake = (1 - t) * 40
-        angle = rng.uniform(-1, 1) * (1 - t) * 70
-        die = _die(v).rotate(angle, expand=True, resample=Image.BICUBIC)
-        img = _bg()
+        angle = rng.uniform(-1, 1) * (1 - t) * 80
+        die = die_sprite(v).rotate(angle, expand=True, resample=Image.BICUBIC)
+        img = _scene()
         d = ImageDraw.Draw(img)
         cx = W / 2 + rng.uniform(-1, 1) * shake
-        cy = H / 2 - 5 - math.sin(math.pi * t) * 45 * (1 - t * 0.3) + rng.uniform(-1, 1) * shake * 0.3
-        d.ellipse([W / 2 - 55, H - 80, W / 2 + 55, H - 58], fill=(8, 12, 18))
+        cy = H / 2 - 5 - math.sin(math.pi * t) * 55 * (1 - t * 0.3) + rng.uniform(-1, 1) * shake * 0.3
+        d.ellipse([W / 2 - 58, H - 80, W / 2 + 58, H - 58], fill=(22, 31, 44))
         img.paste(die, (int(cx - die.width / 2), int(cy - die.height / 2)), die)
         frames.append(img)
         durs.append(50 + int(110 * t * t))
-    final = _bg()
-    die = _die(result, 170, highlight=True)
-    final.paste(die, (W // 2 - 85, H // 2 - 95), die)
+    final = _scene()
+    die = die_sprite(result, 250, highlight=True)
+    final.paste(die, (W // 2 - 125, H // 2 - 140), die)
     _banner(final, f"{result}!", GOLD)
     frames.append(final)
     durs.append(3000)
@@ -137,88 +251,79 @@ def dice_gif(result: int) -> bytes:
 # 슬롯
 # ---------------------------------------------------------------------------
 
-SLOT_ORDER = ["🍒", "🍋", "🔔", "⭐", "💎"]
+_cabinet: Image.Image | None = None
+WIN_W, WIN_H, WIN_GAP, WIN_X, WIN_Y = 108, 150, 14, 103, 82
 
 
-def _star_points(cx, cy, r_out, r_in):
-    pts = []
-    for i in range(10):
-        a = -math.pi / 2 + i * math.pi / 5
-        r = r_out if i % 2 == 0 else r_in
-        pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
-    return pts
-
-
-def draw_symbol(d: ImageDraw.ImageDraw, name: str, cx: float, cy: float, s: float) -> None:
-    """s: 심볼 크기(지름 정도)."""
-    if name == "🍒":
-        r = s * 0.2
-        for dx in (-0.2, 0.22):
-            d.line([(cx + dx * s, cy + 0.12 * s), (cx + 0.05 * s, cy - 0.38 * s)], fill=(60, 140, 60), width=max(2, int(s * 0.05)))
-            d.ellipse([cx + dx * s - r, cy + 0.12 * s - r, cx + dx * s + r, cy + 0.12 * s + r], fill=(215, 30, 50), outline=(120, 10, 25), width=2)
-        d.ellipse([cx - 0.2 * s - r * 0.5, cy + 0.12 * s - r * 0.7, cx - 0.2 * s - r * 0.1, cy + 0.12 * s - r * 0.3], fill=(255, 150, 160))
-    elif name == "🍋":
-        d.ellipse([cx - s * 0.42, cy - s * 0.27, cx + s * 0.42, cy + s * 0.27], fill=(250, 225, 50), outline=(190, 160, 20), width=3)
-        d.polygon([(cx + s * 0.38, cy - 0.04 * s), (cx + s * 0.5, cy), (cx + s * 0.38, cy + 0.04 * s)], fill=(190, 160, 20))
-        d.ellipse([cx - s * 0.25, cy - s * 0.15, cx - s * 0.05, cy - s * 0.05], fill=(255, 245, 160))
-    elif name == "🔔":
-        d.pieslice([cx - s * 0.32, cy - s * 0.42, cx + s * 0.32, cy + s * 0.22], 180, 360, fill=(245, 190, 40), outline=(160, 110, 10))
-        d.polygon([(cx - s * 0.32, cy - s * 0.1), (cx + s * 0.32, cy - s * 0.1), (cx + s * 0.42, cy + s * 0.22), (cx - s * 0.42, cy + s * 0.22)],
-                  fill=(245, 190, 40), outline=(160, 110, 10))
-        d.ellipse([cx - s * 0.09, cy + s * 0.2, cx + s * 0.09, cy + s * 0.38], fill=(180, 120, 20))
-    elif name == "⭐":
-        d.polygon(_star_points(cx, cy, s * 0.46, s * 0.2), fill=(255, 215, 40), outline=(170, 120, 10))
-    elif name == "💎":
-        pts = [(cx - s * 0.32, cy - s * 0.2), (cx - s * 0.18, cy - s * 0.38), (cx + s * 0.18, cy - s * 0.38), (cx + s * 0.32, cy - s * 0.2),
-               (cx, cy + s * 0.4)]
-        d.polygon(pts, fill=(80, 210, 250), outline=(20, 110, 160))
-        d.line([(cx - s * 0.32, cy - s * 0.2), (cx + s * 0.32, cy - s * 0.2)], fill=(200, 245, 255), width=2)
-        d.polygon([(cx - s * 0.18, cy - s * 0.38), (cx - 0.04 * s, cy - s * 0.2), (cx - s * 0.12, cy - s * 0.2)], fill=(210, 248, 255))
+def _cabinet_img() -> Image.Image:
+    global _cabinet
+    if _cabinet is not None:
+        return _cabinet
+    img = _scene()
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle([64, 8, 496, 312], radius=34, fill=NAVY)
+    d.rounded_rectangle([70, 12, 490, 306], radius=30, fill=(222, 58, 74))
+    d.rounded_rectangle([70, 12, 490, 90], radius=30, fill=(236, 84, 98))
+    d.rounded_rectangle([88, 56, 472, 258], radius=18, fill=NAVY)
+    d.rounded_rectangle([94, 62, 466, 252], radius=14, fill=(255, 214, 95))
+    d.rounded_rectangle([98, 266, 462, 298], radius=12, fill=NAVY)
+    d.rounded_rectangle([102, 270, 458, 294], radius=9, fill=(150, 30, 45))
+    for k in range(3):
+        x = WIN_X + k * (WIN_W + WIN_GAP)
+        d.rounded_rectangle([x - 5, WIN_Y - 5, x + WIN_W + 5, WIN_Y + WIN_H + 5], radius=12, fill=NAVY)
+    # 레버 받침
+    d.rounded_rectangle([498, 150, 518, 214], radius=8, fill=NAVY)
+    d.rounded_rectangle([502, 154, 514, 210], radius=5, fill=(180, 190, 205))
+    _cabinet = img
+    return img
 
 
 def slot_gif(reels: list[str]) -> bytes:
-    """reels: 최종 그림 3개. 왼쪽부터 차례로 멈춘다."""
     rng = random.Random()
-    box_w, box_h, gap = 130, 190, 24
-    total_w = box_w * 3 + gap * 2
-    x0 = (W - total_w) // 2
-    y0 = 38
-    cell = 96
+    cell = 100
     stops = [14, 20, 26]
     n = 28
-    seqs = [[rng.choice(SLOT_ORDER) for _ in range(40)] for _ in range(3)]
+    seqs = [[rng.choice(SYMBOL_NAMES) for _ in range(40)] for _ in range(3)]
     frames, durs = [], []
+    cab = _cabinet_img()
     for f in range(n):
-        img = _bg()
+        img = cab.copy()
         d = ImageDraw.Draw(img)
-        d.rounded_rectangle([x0 - 18, y0 - 18, x0 + total_w + 18, y0 + box_h + 18], radius=22, fill=(30, 20, 40), outline=GOLD, width=4)
+        # 상단 전구 (번갈아 깜빡)
+        for b in range(14):
+            on = (b + f) % 2 == 0
+            x = 98 + b * 26.5
+            d.ellipse([x - 6, 18, x + 6, 30], fill=(255, 236, 130) if on else (170, 40, 56), outline=NAVY, width=2)
+        # 레버: 처음 6프레임 동안 아래로 당겼다가 올라옴
+        pull = min(f, 5) / 5 if f < 10 else max(0, 1 - (f - 10) / 4)
+        ky = 120 + pull * 70
+        d.line([(508, 160), (508, ky)], fill=(180, 190, 205), width=8)
+        d.ellipse([496, ky - 16, 520, ky + 8], fill=(255, 224, 70), outline=NAVY, width=3)
         for r in range(3):
-            bx = x0 + r * (box_w + gap)
-            reel = Image.new("RGB", (box_w, box_h), (245, 240, 230))
-            rd = ImageDraw.Draw(reel)
+            x = WIN_X + r * (WIN_W + WIN_GAP)
+            reel = Image.new("RGB", (WIN_W, WIN_H), (252, 249, 240))
             if f >= stops[r]:
-                draw_symbol(rd, reels[r], box_w / 2, box_h / 2, cell)
+                spr = symbol_sprite(reels[r], 104)
+                reel.paste(spr, ((WIN_W - 104) // 2, (WIN_H - 104) // 2), spr)
             else:
-                off = (f * 47 + r * 31) % cell
-                for k in range(-1, box_h // cell + 2):
+                off = (f * 53 + r * 31) % cell
+                for k in range(-1, WIN_H // cell + 2):
                     sym = seqs[r][(f * 2 + k + r * 5) % len(seqs[r])]
-                    draw_symbol(rd, sym, box_w / 2, k * cell + off + cell / 2, cell * 0.85)
-                shade = Image.new("RGBA", (box_w, box_h), (0, 0, 0, 0))
-                sd = ImageDraw.Draw(shade)
-                sd.rectangle([0, 0, box_w, box_h], fill=(255, 255, 255, 50))
-                reel = Image.alpha_composite(reel.convert("RGBA"), shade).convert("RGB")
-            img.paste(reel, (bx, y0))
-            d.rounded_rectangle([bx, y0, bx + box_w, y0 + box_h], radius=10, outline=(60, 40, 70), width=4)
-        d.line([(x0 - 18, y0 + box_h // 2), (x0 + total_w + 18, y0 + box_h // 2)], fill=RED, width=2)
+                    spr = symbol_sprite(sym, 84)
+                    reel.paste(spr, ((WIN_W - 84) // 2, k * cell + off + (cell - 84) // 2), spr)
+                veil = Image.new("RGBA", (WIN_W, WIN_H), (255, 255, 255, 70))
+                reel = Image.alpha_composite(reel.convert("RGBA"), veil).convert("RGB")
+            img.paste(reel, (x, WIN_Y))
+        d.line([(WIN_X - 5, WIN_Y + WIN_H // 2), (WIN_X + 3 * WIN_W + 2 * WIN_GAP + 5, WIN_Y + WIN_H // 2)], fill=(222, 58, 74), width=3)
+        d.text((280, 45), "SLOT", font=font("heavy", 20), fill=(255, 245, 220), anchor="mm")
         frames.append(img)
         durs.append(70 if f < stops[0] else 110)
     final = frames[-1].copy()
-    if reels[0] == reels[1] == reels[2]:
-        _banner(final, "JACKPOT!", GOLD)
-    elif len(set(reels)) == 2:
-        _banner(final, "2개 일치", TEXT)
-    else:
-        _banner(final, "꽝", MUTED)
+    d = ImageDraw.Draw(final)
+    label, col = (("JACKPOT!", (200, 30, 50)) if reels[0] == reels[1] == reels[2] else
+                  (("2개 일치", NAVY) if len(set(reels)) == 2 else ("꽝", (120, 120, 130))))
+    d.rounded_rectangle([195, 34, 365, 57], radius=11, fill=(255, 214, 95), outline=NAVY, width=2)
+    d.text((280, 46), label, font=font("heavy", 20), fill=col, anchor="mm")
     frames.append(final)
     durs.append(3000)
     return gif_bytes(frames, durs)
