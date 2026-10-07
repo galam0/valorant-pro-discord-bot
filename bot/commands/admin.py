@@ -164,8 +164,8 @@ class AdminGroup(app_commands.Group, name="관리", description="관리자 전�
     async def register_player_settings(
         self, interaction: discord.Interaction, 닉네임: str,
         dpi: app_commands.Range[int, 100, 20000] | None = None,
-        감도: app_commands.Range[float, 0.01, 10] | None = None,
-        스코프감도: app_commands.Range[float, 0.01, 10] | None = None,
+        감도: app_commands.Range[float, 0.01, 10.0] | None = None,
+        스코프감도: app_commands.Range[float, 0.01, 10.0] | None = None,
         폴링레이트: app_commands.Range[int, 125, 8000] | None = None,
         해상도: str | None = None, 비율: str | None = None,
         마우스: str | None = None, 키보드: str | None = None, 마우스패드: str | None = None,
