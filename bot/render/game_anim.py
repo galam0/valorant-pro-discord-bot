@@ -6,6 +6,7 @@ import math
 import random
 from pathlib import Path
 from io import BytesIO
+from functools import lru_cache
 from typing import Sequence
 
 from PIL import Image, ImageDraw, ImageFilter
@@ -165,7 +166,7 @@ def _scene() -> Image.Image:
 # ---------------------------------------------------------------------------
 
 
-def coin_gif(result: str) -> bytes:
+def _coin_gif(result: str, variant: int = 0) -> bytes:
     """result: '앞' | '뒤'. 동전이 튀어 오르며 돈다."""
     half_turns = 10 if result == "앞" else 9      # 짝수 번 뒤집히면 앞면
     n = 26
@@ -199,7 +200,7 @@ _PIPS = {1: [(0, 0)], 2: [(-1, -1), (1, 1)], 3: [(-1, -1), (0, 0), (1, 1)], 4: [
          5: [(-1, -1), (1, -1), (0, 0), (-1, 1), (1, 1)], 6: [(-1, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (1, 1)]}
 
 
-def dice_gif(result: int) -> bytes:
+def _dice_gif(result: int, variant: int = 0) -> bytes:
     rng = random.Random()
     n = 18
     frames, durs = [], []
@@ -314,7 +315,7 @@ def _chrome(img: Image.Image, led: str, led_color, pull: float, glow: bool = Fal
     d.ellipse([507, 116 + ky - 96, 515, 124 + ky - 96], fill=(255, 170, 180))
 
 
-def slot_gif(reels: list[str]) -> bytes:
+def _slot_gif(reels: tuple[str, ...], variant: int = 0) -> bytes:
     rng = random.Random()
     stops = [14, 20, 26]
     n = 28
@@ -471,3 +472,38 @@ def quiz_image(art: Image.Image, *, silhouette: bool, caption: str | None = None
     out = BytesIO()
     img.save(out, format="PNG")
     return out.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# 캐시: 결과의 경우의 수가 적어서(동전 2·주사위 6·슬롯 125) 같은 연출을 다시 쓴다.
+# 여러 명이 동시에 해도 그림 생성 비용이 거의 들지 않는다. 변형(variant) 3가지를 섞어 매번 똑같아 보이지 않게 한다.
+# ---------------------------------------------------------------------------
+
+VARIANTS = 3
+
+
+@lru_cache(maxsize=8)
+def _coin_cached(result: str, variant: int) -> bytes:
+    return _coin_gif(result, variant)
+
+
+@lru_cache(maxsize=24)
+def _dice_cached(result: int, variant: int) -> bytes:
+    return _dice_gif(result, variant)
+
+
+@lru_cache(maxsize=48)
+def _slot_cached(reels: tuple[str, ...], variant: int) -> bytes:
+    return _slot_gif(reels, variant)
+
+
+def coin_gif(result: str) -> bytes:
+    return _coin_cached(result, random.randrange(VARIANTS))
+
+
+def dice_gif(result: int) -> bytes:
+    return _dice_cached(result, random.randrange(VARIANTS))
+
+
+def slot_gif(reels: list[str]) -> bytes:
+    return _slot_cached(tuple(reels), random.randrange(VARIANTS))

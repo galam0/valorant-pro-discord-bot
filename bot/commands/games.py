@@ -23,6 +23,7 @@ from bot.services import games_service as gs
 from bot.services.economy_service import fmt
 
 log = logging.getLogger("valobot.cmd.games")
+_RENDER_SEM = asyncio.Semaphore(2)          # 그림 생성은 동시에 2개까지만 (느린 서버에서 봇이 버벅이지 않게)
 _playing: set[tuple[int, int]] = set()      # 진행 중인 블랙잭/퀴즈 (같은 사람이 동시에 여러 판 못 함)
 
 BET = app_commands.Range[int, games.MIN_BET, games.MAX_BET]
@@ -47,7 +48,8 @@ async def _animate(interaction: discord.Interaction, make_gif, title: str, wait:
         await interaction.followup.send(embed=result)
         return
     try:
-        gif = await asyncio.to_thread(make_gif)
+        async with _RENDER_SEM:
+            gif = await asyncio.to_thread(make_gif)
     except Exception:
         log.exception("애니메이션 생성 실패")
         await interaction.followup.send(embed=result)
