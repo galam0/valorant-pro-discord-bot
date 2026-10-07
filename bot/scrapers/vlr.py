@@ -1041,6 +1041,44 @@ def parse_player_page(html: str, vlr_id: int, timespan: str = "90d") -> PlayerSt
 
 
 
+@dataclass
+class TeamMapStat:
+    """팀의 맵별 통계 한 줄 (VLR /team/stats)."""
+
+    map_name: str
+    games: int
+    win_pct: int | None
+    wins: int
+    losses: int
+    atk_first: int | None     # 공격으로 시작한 게임 수
+    def_first: int | None
+    atk_win_pct: int | None   # 공격 라운드 승률
+    def_win_pct: int | None
+
+
+def parse_team_maps(html: str) -> list[TeamMapStat]:
+    soup = BeautifulSoup(html, "html.parser")
+    table = soup.select_one("table.wf-table.mod-team-maps")
+    if table is None:
+        raise ParseError("팀 맵 통계 표를 찾지 못했습니다 (사이트 구조 변경 가능성)")
+    out: list[TeamMapStat] = []
+    for tr in table.find_all("tr"):
+        cells = tr.find_all("td", recursive=False)
+        if len(cells) < 12:
+            continue
+        m = re.match(r"\s*([A-Za-z][A-Za-z ]*?)\s*\((\d+)\)", cells[0].get_text(" ", strip=True))
+        if not m or int(m.group(2)) == 0:
+            continue
+        t = [c.get_text(" ", strip=True) for c in cells]
+        out.append(TeamMapStat(
+            map_name=m.group(1), games=int(m.group(2)),
+            win_pct=_int_num(t[2]), wins=_int_num(t[3]) or 0, losses=_int_num(t[4]) or 0,
+            atk_first=_int_num(t[5]), def_first=_int_num(t[6]),
+            atk_win_pct=_int_num(t[7]), def_win_pct=_int_num(t[10]),
+        ))
+    return out
+
+
 class VlrScraper:
     OFFSET_TTL = 6 * 3600  # 목록 시간대 오프셋 재측정 주기
 
@@ -1078,6 +1116,15 @@ class VlrScraper:
     async def fetch_player(self, vlr_id: int, timespan: str = "90d") -> PlayerStatsPage:
         html = await self._get(f"/player/{vlr_id}/?timespan={timespan}")
         return await asyncio.to_thread(parse_player_page, html, vlr_id, timespan)
+
+    async def fetch_team_maps(self, vlr_id: int, days: int | None = None) -> list[TeamMapStat]:
+        """팀 맵별 통계. days 가 있으면 최근 days일만 (VLR 날짜 필터 date_start)."""
+        path = f"/team/stats/{vlr_id}"
+        if days:
+            start = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+            path += f"?date_start={start}"
+        html = await self._get(path)
+        return await asyncio.to_thread(parse_team_maps, html)
 
     async def search_events(self, query: str) -> list[EventSearchResult]:
         html = await self._get(f"/search/?q={quote(query)}&type=events")

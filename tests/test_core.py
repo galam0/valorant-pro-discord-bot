@@ -578,5 +578,74 @@ class EconomyCommandsTest(unittest.TestCase):
         self.assertIn("bot.commands.economy", open("bot/commands/__init__.py", encoding="utf-8").read())
 
 
+class GamesTest(unittest.TestCase):
+    def test_slot_rtp(self):
+        from bot.services import games
+        self.assertTrue(0.93 < games.slot_rtp() < 0.97)
+
+    def test_dice_and_coin_payouts(self):
+        from bot.services import games
+        self.assertEqual(games.dice_payout("홀", 3, 100), 195)
+        self.assertEqual(games.dice_payout("짝", 3, 100), 0)
+        self.assertEqual(games.dice_payout("4", 4, 100), 570)
+
+    def test_hand_value(self):
+        from bot.services import games
+        self.assertEqual(games.hand_value(["A♠", "K♥"]), 21)
+        self.assertEqual(games.hand_value(["A♠", "A♥", "9♦"]), 21)
+        self.assertEqual(games.hand_value(["K♠", "Q♥", "5♦"]), 25)
+
+    def test_blackjack_results(self):
+        import random
+        from bot.services import games
+        g = games.Blackjack(stake=100, deck=["7♣", "K♠", "K♥", "A♠"])
+        # 플레이어 A♠ K♥ = 블랙잭 (pop 순서: A♠, K♥ / 딜러 K♠, 7♣)
+        self.assertEqual(g.result(), ("blackjack", 250))
+        for seed in range(200):   # 어떤 판이든 지급액은 0 ~ 2.5배
+            g = games.Blackjack(stake=100, deck=games.new_deck(random.Random(seed)))
+            if not g.done:
+                g.stand()
+            outcome, pay = g.result()
+            self.assertIn(pay, (0, 100, 200, 250))
+
+    def test_quiz_bank_valid(self):
+        from bot.services import quiz_bank
+        for q, a, wrong in quiz_bank.QUESTIONS:
+            self.assertEqual(len(set(wrong)), 3)
+            self.assertNotIn(a, wrong)
+        _, _, options, ans = quiz_bank.pick_question()
+        self.assertEqual(len(options), 4)
+
+    def test_week_start_is_monday(self):
+        from datetime import datetime
+        from bot.services import quiz_bank
+        ws = quiz_bank.week_start(datetime(2026, 10, 8, 15, 30))
+        self.assertEqual((ws.weekday(), ws.hour), (0, 0))
+
+
+class TeamMapsTest(unittest.TestCase):
+    ROW = ("<tr><td>{n} ({g})</td><td></td><td>{w}%</td><td>{wi}</td><td>{lo}</td><td>4</td><td>5</td>"
+           "<td>52%</td><td>10</td><td>9</td><td>55%</td><td>11</td><td>8</td><td>x</td></tr>")
+
+    def html(self):
+        rows = self.ROW.format(n="Bind", g=9, w=56, wi=5, lo=4) + self.ROW.format(n="Icebox", g=0, w="-", wi=0, lo=0)
+        rows += "<tr><td></td><td>2026/5/02 FULL SENSE 7/13</td><td></td></tr>"
+        return f'<table class="wf-table mod-team-maps">{rows}</table>'
+
+    def test_parse(self):
+        from bot.scrapers.vlr import parse_team_maps
+        got = parse_team_maps(self.html())
+        self.assertEqual(len(got), 1)
+        m = got[0]
+        self.assertEqual((m.map_name, m.games, m.win_pct, m.wins, m.losses, m.atk_win_pct, m.def_win_pct),
+                         ("Bind", 9, 56, 5, 4, 52, 55))
+
+    def test_card_renders(self):
+        from bot.render.team_maps_card import render_team_maps_card, team_maps_data
+        from bot.scrapers.vlr import parse_team_maps
+        png = render_team_maps_card(team_maps_data("T1", parse_team_maps(self.html()), "전체 기간"))
+        self.assertTrue(png.startswith(b"\x89PNG"))
+
+
 if __name__ == "__main__":
     unittest.main()

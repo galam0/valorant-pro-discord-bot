@@ -386,6 +386,20 @@ async def build_player_stats_card(page: Any) -> bytes | None:
         return None
 
 
+async def build_team_maps_card(team: Any, stats: list[Any], period_label: str) -> bytes | None:
+    """팀 맵 통계 카드 PNG. 실패하면 None."""
+    if not render_enabled():
+        return None
+    try:
+        from bot.render.team_maps_card import render_team_maps_card, team_maps_data
+
+        fetched = await images.fetch_many({"team_logo": team.logo_url})
+        return await _render(render_team_maps_card, team_maps_data(team.name, stats, period_label), fetched)
+    except Exception:
+        log.exception("팀 맵 통계 카드 생성 실패")
+        return None
+
+
 MAX_SCHEDULE_ROWS = 6
 
 

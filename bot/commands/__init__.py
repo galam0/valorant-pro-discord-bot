@@ -20,6 +20,7 @@ EXTENSIONS = (
     "bot.commands.compare",
     "bot.commands.bracket",
     "bot.commands.economy",
+    "bot.commands.games",
     "bot.commands.admin",
 )
 
