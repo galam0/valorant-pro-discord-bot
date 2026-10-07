@@ -1,4 +1,4 @@
-"""/ping"""
+"""/ping, /도움말"""
 
 from __future__ import annotations
 
@@ -7,7 +7,9 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.database.database import db
+from bot.commands.admin import is_admin
 from bot.embeds.common import COLOR_MAIN
+from bot.embeds.help import build_help
 
 
 class General(commands.Cog):
@@ -29,6 +31,11 @@ class General(commands.Cog):
         embed.add_field(name="Discord", value=f"🟢 {latency_ms}ms", inline=True)
         embed.add_field(name="데이터베이스", value=db_text, inline=True)
         await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="도움말", description="사용할 수 있는 명령어와 사용법을 보여줍니다.")
+    async def help(self, interaction: discord.Interaction) -> None:
+        embed = build_help(self.bot.tree.get_commands(), show_admin=is_admin(interaction))
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:

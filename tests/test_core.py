@@ -414,6 +414,46 @@ class EmojiTest(unittest.TestCase):
         self.assertEqual(out.getpixel((SIZE // 2, 2))[3], 0)  # 위아래 여백은 투명
 
 
+class HelpTest(unittest.TestCase):
+    @staticmethod
+    def _cmd(name, desc, params=()):
+        return NS(name=name, description=desc, parameters=[NS(name=n, required=r) for n, r in params])
+
+    def test_flatten_and_usage(self):
+        from bot.embeds.help import flatten, usage
+
+        group = NS(name="관리", description="g", commands=[self._cmd("팀갱신", "d", [("팀", True)])])
+        flat = flatten([self._cmd("팀", "팀 조회", [("이름", True)]), group])
+        self.assertEqual([f[0] for f in flat], ["팀", "관리 팀갱신"])
+        self.assertEqual(usage("선수", [("닉네임", True), ("기간", False)]), "/선수 <닉네임> [기간]")
+
+    def test_sections_admin_visibility(self):
+        from bot.embeds.help import help_sections
+
+        cmds = [self._cmd("팀", "팀 조회", [("이름", True)]), self._cmd("새기능", "나중에 추가됨"),
+                NS(name="관리", description="g", commands=[self._cmd("상태", "봇 상태")])]
+        titles = lambda admin: [t for t, _ in help_sections(cmds, show_admin=admin)]
+        self.assertIn("✨ 그 밖의 명령어", titles(False))     # 분류에 없는 새 명령어도 빠지지 않음
+        self.assertNotIn("🔒 관리자 전용", titles(False))
+        self.assertIn("🔒 관리자 전용", titles(True))
+        body = dict(help_sections(cmds, show_admin=False))["📅 경기·팀"]
+        self.assertIn("/팀 <이름>", body)
+
+
+class PlayerCompareTest(unittest.TestCase):
+    def test_compare_card(self):
+        from bot.render.player_compare_card import compare_data, render_player_compare_card, summarize
+        from tests.test_core import PLAYER_HTML
+
+        a = parse_player_page(PLAYER_HTML, 1)
+        b = parse_player_page(PLAYER_HTML.replace("f0rsakeN", "Other").replace("0.95", "1.30"), 2)
+        s = summarize(a)
+        self.assertAlmostEqual(s["kills"], 424.0)
+        self.assertGreater(summarize(b)["rating"], s["rating"])
+        png = render_player_compare_card(compare_data(a, b), {})
+        self.assertTrue(png.startswith(b"\x89PNG"))
+
+
 class CommandStructureTest(unittest.TestCase):
     def test_commands_are_class_methods(self):
         """명령어 함수가 setup() 안에 잘못 들어가면(들여쓰기 실수) 봇이 시작 때 죽는다."""

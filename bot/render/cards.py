@@ -21,6 +21,7 @@ from bot.render.bracket_card import render_bracket_card
 from bot.render.compare_card import render_compare_card
 from bot.render.match_card import render_match_card
 from bot.render.player_card import render_player_card
+from bot.render.player_compare_card import compare_data, render_player_compare_card
 from bot.render.player_stats_card import player_stats_data, render_player_stats_card
 from bot.render.ranking_card import render_ranking_card
 from bot.render.schedule_card import render_schedule_card
@@ -439,4 +440,16 @@ async def build_schedule_card(title: str, subtitle: str, matches: list[Match], f
         return await _render(render_schedule_card, data, fetched)
     except Exception:
         log.exception("일정 카드 생성 실패")
+        return None
+
+
+async def build_player_compare_card(a: Any, b: Any) -> bytes | None:
+    """두 선수 통계 비교 카드 PNG (a, b: PlayerStatsPage). 실패하면 None."""
+    if not render_enabled():
+        return None
+    try:
+        fetched = await images.fetch_many({"photo0": a.photo_url, "photo1": b.photo_url})
+        return await _render(render_player_compare_card, compare_data(a, b), fetched)
+    except Exception:
+        log.exception("선수 비교 카드 생성 실패")
         return None

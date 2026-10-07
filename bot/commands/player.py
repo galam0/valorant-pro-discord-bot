@@ -13,7 +13,7 @@ from bot.autocomplete import player_autocomplete
 from bot.database.database import db
 from bot.embeds.common import COLOR_INFO, error_embed
 from bot.embeds.player import player_embed
-from bot.render.cards import build_player_card, build_player_stats_card
+from bot.render.cards import build_player_card, build_player_compare_card, build_player_stats_card
 from bot.scrapers.http import ScrapeError
 from bot.services import player_service, player_stats_service
 from bot.utils.config import settings
@@ -80,10 +80,10 @@ TIMESPAN_CHOICES = [
 ]
 
 
-async def send_player_stats(interaction: discord.Interaction, query: str, timespan: str) -> bool:
-    """VLR 통계 카드를 보낸다. 보냈으면 True."""
+async def _stats_or_error(interaction: discord.Interaction, query: str, timespan: str):
+    """통계를 가져온다. 실패하면 안내 메시지를 보내고 None."""
     try:
-        page, player, guessed, widened = await player_stats_service.get_player_stats(query, timespan)
+        return await player_stats_service.get_player_stats(query, timespan)
     except player_stats_service.PlayerNotFound as exc:
         if exc.candidates:
             names = ", ".join(f"`{p.nickname}`" for p in exc.candidates)
@@ -91,13 +91,19 @@ async def send_player_stats(interaction: discord.Interaction, query: str, timesp
         else:
             msg = f"'{query}' 선수 정보를 찾을 수 없습니다.\n닉네임 철자를 확인해주세요. (팀 로스터에 등록된 선수만 검색돼요)"
         await interaction.followup.send(embed=error_embed(msg))
-        return False
     except player_stats_service.NoVlrProfile as exc:
         await interaction.followup.send(embed=error_embed(f"**{exc.nickname}** 선수는 VLR 선수 정보가 연결돼 있지 않아 통계를 볼 수 없습니다."))
-        return False
     except ScrapeError:
         await interaction.followup.send(embed=error_embed("VLR에서 선수 통계를 가져오지 못했습니다. 잠시 후 다시 시도해주세요."))
+    return None
+
+
+async def send_player_stats(interaction: discord.Interaction, query: str, timespan: str) -> bool:
+    """VLR 통계 카드를 보낸다. 보냈으면 True."""
+    got = await _stats_or_error(interaction, query, timespan)
+    if got is None:
         return False
+    page, player, guessed, widened = got
 
     notes = []
     if guessed:
@@ -138,6 +144,56 @@ class PlayerCommands(commands.Cog):
         except Exception:
             log.exception("선수 조회 실패: %s", 닉네임)
             await interaction.followup.send(embed=error_embed("현재 데이터를 불러올 수 없습니다. 잠시 후 다시 시도해주세요."))
+
+
+    @app_commands.command(name="선수비교", description="두 선수의 VLR 통계(레이팅·ACS·K:D 등)를 나란히 비교합니다.")
+    @app_commands.describe(선수1="첫 번째 선수 닉네임", 선수2="두 번째 선수 닉네임", 기간="통계 기간 (기본: 최근 90일)")
+    @app_commands.choices(기간=TIMESPAN_CHOICES)
+    @app_commands.autocomplete(선수1=player_autocomplete, 선수2=player_autocomplete)
+    async def compare_players(self, interaction: discord.Interaction, 선수1: str, 선수2: str,
+                              기간: app_commands.Choice[str] | None = None) -> None:
+        if not db.configured:
+            await interaction.response.send_message(embed=error_embed("현재 데이터를 불러올 수 없습니다."), ephemeral=True)
+            return
+        await interaction.response.defer(thinking=True)
+        try:
+            await _compare_players(interaction, 선수1, 선수2, 기간.value if 기간 else "90d")
+        except Exception:
+            log.exception("선수 비교 실패: %s vs %s", 선수1, 선수2)
+            await interaction.followup.send(embed=error_embed("현재 데이터를 불러올 수 없습니다. 잠시 후 다시 시도해주세요."))
+
+
+
+async def _compare_players(interaction: discord.Interaction, q1: str, q2: str, timespan: str) -> None:
+    got1 = await _stats_or_error(interaction, q1, timespan)
+    if got1 is None:
+        return
+    got2 = await _stats_or_error(interaction, q2, timespan)
+    if got2 is None:
+        return
+    (a, p1, g1, w1), (b, p2, g2, w2) = got1, got2
+    if a.vlr_id == b.vlr_id:
+        await interaction.followup.send(embed=error_embed("서로 다른 두 선수를 입력해주세요."))
+        return
+    notes = []
+    if g1:
+        notes.append(f"🔎 '{q1}' → **{p1.nickname}**")
+    if g2:
+        notes.append(f"🔎 '{q2}' → **{p2.nickname}**")
+    if w1 or w2:
+        notes.append("ℹ️ 선택한 기간에 기록이 없는 선수는 전체 기간 통계로 비교해요.")
+    png = await build_player_compare_card(a, b)
+    content = "\n".join(notes) or None
+    if png is not None:
+        await interaction.followup.send(content=content, file=discord.File(BytesIO(png), filename="player_compare.png"))
+        return
+    from bot.render.player_compare_card import METRICS, summarize
+
+    sa, sb = summarize(a), summarize(b)
+    lines = [f"**{label}**  {sa.get(key) if sa.get(key) is not None else '-'}  vs  {sb.get(key) if sb.get(key) is not None else '-'}"
+             for label, key, *_ in METRICS[:7]]
+    embed = discord.Embed(title=f"{a.nickname} vs {b.nickname}", description="\n".join(lines), color=COLOR_INFO)
+    await interaction.followup.send(content=content, embed=embed)
 
 
 async def setup(bot: commands.Bot) -> None:
