@@ -16,6 +16,7 @@ from bot.database.models import Match
 from bot.database.repository import TeamDetail
 from bot.render import images
 from bot.render.base import render_enabled
+from bot.render.compare_card import render_compare_card
 from bot.render.match_card import render_match_card
 from bot.render.player_card import render_player_card
 from bot.render.ranking_card import render_ranking_card
@@ -281,4 +282,45 @@ async def build_ranking_card(title: str, subtitle: str, ranked: list[tuple[int, 
         return await asyncio.to_thread(render_ranking_card, data, fetched)
     except Exception:
         log.exception("랭킹 카드 생성 실패")
+        return None
+
+
+async def build_compare_card(result: Any) -> bytes | None:
+    """두 팀 비교 카드 PNG (result: compare_service.CompareResult). 실패하면 None."""
+    if not render_enabled():
+        return None
+    try:
+        a, b = result.a, result.b
+
+        def side(detail: TeamDetail) -> dict[str, Any]:
+            t = detail.team
+            form = []
+            for m in detail.recent:
+                _, my, op = _perspective(m, t.id)
+                if my is not None and op is not None and my != op:
+                    form.append("W" if my > op else "L")
+            roster = [m.name for m in detail.members if m.role not in STAFF_ROLES and m.role != "inactive"][:6]
+            return {"name": t.name, "country": country_ko(t.country_code, t.country_name) or "-",
+                    "form": form, "roster": roster}
+
+        a_wins = b_wins = 0
+        h2h_rows = []
+        for m in result.h2h:
+            _, my, op = _perspective(m, a.team.id)  # a 팀 기준
+            if my is None or op is None:
+                continue
+            winner = "a" if my > op else "b" if my < op else None
+            a_wins += winner == "a"
+            b_wins += winner == "b"
+            h2h_rows.append({"date": fmt_dt(m.scheduled_at, with_time=False), "score_a": my, "score_b": op,
+                             "winner": winner, "event": m.tournament_name})
+        logos = await images.fetch_many({"a": a.team.logo_url, "b": b.team.logo_url})
+        data = {
+            "a": side(a), "b": side(b),
+            "h2h": {"a_wins": a_wins, "b_wins": b_wins, "rows": h2h_rows},
+            "footer": "저장된 경기 기준 · 출처: VLR.gg",
+        }
+        return await asyncio.to_thread(render_compare_card, data, logos)
+    except Exception:
+        log.exception("팀 비교 카드 생성 실패")
         return None

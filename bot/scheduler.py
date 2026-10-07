@@ -4,10 +4,10 @@ Neon 무료 플랜(월 100 CU-hours, 5분 쿼리가 없으면 일시정지)과 V
 
 | 작업        | 주기                | 내용 |
 |-------------|---------------------|------|
-| matches     | 30분                | 예정·진행 경기 + 최근 결과 → DB (요청 2회) |
-| live        | 5분                 | /matches 에서 진행 중 경기 확인(요청 1회, DB 안 씀). 진행 중이면 상세 기록을 DB에 저장.
+| matches     | 1시간               | 예정·진행 경기 + 최근 결과 → DB (요청 2회) |
+| live        | 10분                | /matches 에서 진행 중 경기 확인(요청 1회, DB 안 씀). 진행 중이면 상세 기록을 DB에 저장.
 |             |                     | 방금 끝난 경기는 최종 기록을 한 번 더 저장 |
-| teams       | 매일 04:30 (한국)   | 저장된 모든 팀의 로스터·경기를 새로 가져옴 (새벽이라 사용자가 적음) |
+| teams       | 2달에 한 번 (1·3·5·7·9·11월 1일 04:30 한국) | 저장된 모든 팀의 로스터·경기. 중간에는 /관리 팀갱신·전체팀갱신으로 직접 |
 
 - 진행 중인 경기가 없으면 live 작업은 DB를 건드리지 않아 Neon이 잠들 수 있다.
 - 작업이 겹치지 않게 max_instances=1, 실패해도 다음 주기에 다시 시도하고 봇은 계속 동작한다.
@@ -115,14 +115,16 @@ def start() -> None:
     sched = AsyncIOScheduler(timezone="Asia/Seoul")
     common = dict(max_instances=1, coalesce=True, misfire_grace_time=120)
     # 시작 직후 한꺼번에 몰리지 않게 약간씩 늦춰서 첫 실행
-    sched.add_job(job_matches, "interval", minutes=30, id="matches", jitter=20,
+    sched.add_job(job_matches, "interval", minutes=60, id="matches", jitter=20,
                   next_run_time=_in(seconds=90), **common)
-    sched.add_job(job_live, "interval", minutes=5, id="live", jitter=10,
+    sched.add_job(job_live, "interval", minutes=10, id="live", jitter=10,
                   next_run_time=_in(seconds=150), **common)
-    sched.add_job(job_teams, CronTrigger(hour=4, minute=30, timezone="Asia/Seoul"), id="teams", **common)
+    # 재배포·재시작으로 그 시각을 놓쳐도 6시간 안에 켜지면 실행
+    sched.add_job(job_teams, CronTrigger(month="1,3,5,7,9,11", day=1, hour=4, minute=30, timezone="Asia/Seoul"),
+                  id="teams", **{**common, "misfire_grace_time": 6 * 3600})
     sched.start()
     _scheduler = sched
-    log.info("자동 갱신 시작: 경기 30분 · 진행 중 5분 · 팀 매일 04:30(KST)")
+    log.info("자동 갱신 시작: 경기 1시간 · 진행 중 10분 · 팀 2달에 한 번")
 
 
 def stop() -> None:

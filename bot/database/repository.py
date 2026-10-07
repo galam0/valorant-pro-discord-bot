@@ -763,6 +763,19 @@ async def get_team_detail(session: AsyncSession, team_id: int, match_limit: int 
     return TeamDetail(team, list(members), list(recent), list(upcoming))
 
 
+async def get_head_to_head(session: AsyncSession, team_a: int, team_b: int, limit: int = 5) -> list[Match]:
+    """두 팀의 종료된 맞대결 (DB에 저장된 경기만, 최신순)."""
+    both = or_(
+        (Match.team1_id == team_a) & (Match.team2_id == team_b),
+        (Match.team1_id == team_b) & (Match.team2_id == team_a),
+    )
+    result = await session.execute(
+        select(Match).where(both, Match.status == "completed")
+        .order_by(Match.scheduled_at.desc().nulls_last()).limit(limit)
+    )
+    return list(result.scalars())
+
+
 async def get_upcoming_matches(session: AsyncSession, limit: int = 10) -> list[Match]:
     result = await session.execute(
         select(Match)
