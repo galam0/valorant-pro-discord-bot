@@ -650,7 +650,7 @@ class TeamMapsTest(unittest.TestCase):
 class GameAnimTest(unittest.TestCase):
     def test_gifs_render(self):
         from bot.render import game_anim as g
-        for gif in (g.coin_gif("앞"), g.coin_gif("뒤"), g.dice_gif(3), g.slot_gif(["🍒", "🍋", "💎"]),
+        for gif in (g.coin_gif("앞"), g.coin_gif("뒤"), g.dice_gif(3), g.slot_gif(["🎯", "⚡", "💎"]),
                     g.deal_gif(["A♠", "K♥"], ["9♦", "7♣"]), g.finish_gif(["A♠", "K♥", "5♣"], ["10♦", "6♣", "9♥"])):
             self.assertTrue(gif.startswith(b"GIF8"))
             self.assertLess(len(gif), 1_000_000)

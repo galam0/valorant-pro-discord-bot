@@ -48,7 +48,7 @@ def _banner(img: Image.Image, text: str, color=TEXT) -> None:
 NAVY = (27, 36, 51)
 GOLD_L, GOLD_M, GOLD_D = (255, 228, 138), (255, 200, 61), (224, 162, 27)
 SS = 4
-SYMBOL_NAMES = ["🍒", "🍋", "🔔", "⭐", "💎"]
+SYMBOL_NAMES = ["🎯", "🛡️", "⚡", "👑", "💎"]
 _sprites: dict = {}
 
 
@@ -132,40 +132,40 @@ def die_sprite(value: int, size: int = 240, highlight: bool = False) -> Image.Im
 
 
 def symbol_sprite(name: str, size: int = 200) -> Image.Image:
+    """모던 플랫 심볼: 외곽선 없이 두 가지 톤의 단색 도형."""
     key = ("sym", name, size)
     if key in _sprites:
         return _sprites[key]
     img, d, n = _canvas(size)
-    ow = int(n * 0.035)
-    if name == "🍒":
-        for cx, cy in ((0.3, 0.68), (0.7, 0.72)):
-            d.line([(cx * n, cy * n), (0.52 * n, 0.2 * n)], fill=(60, 160, 80), width=int(n * 0.04))
-        d.polygon([(0.52 * n, 0.2 * n), (0.78 * n, 0.12 * n), (0.62 * n, 0.3 * n)], fill=(70, 190, 100), outline=NAVY, width=ow)
-        for cx, cy in ((0.3, 0.68), (0.7, 0.72)):
-            r = n * 0.2
-            d.ellipse([cx * n - r, cy * n - r, cx * n + r, cy * n + r], fill=(232, 67, 79), outline=NAVY, width=ow)
-            d.ellipse([cx * n - r * 0.55, cy * n - r * 0.6, cx * n - r * 0.15, cy * n - r * 0.25], fill=(255, 150, 160))
-    elif name == "🍋":
-        d.ellipse([0.1 * n, 0.25 * n, 0.9 * n, 0.75 * n], fill=(255, 224, 70), outline=NAVY, width=ow)
-        d.polygon([(0.86 * n, 0.44 * n), (0.97 * n, 0.5 * n), (0.86 * n, 0.56 * n)], fill=(255, 224, 70), outline=NAVY, width=ow)
-        d.polygon([(0.14 * n, 0.44 * n), (0.03 * n, 0.5 * n), (0.14 * n, 0.56 * n)], fill=(255, 224, 70), outline=NAVY, width=ow)
-        d.arc([0.2 * n, 0.32 * n, 0.55 * n, 0.6 * n], 190, 260, fill=(255, 245, 170), width=int(n * 0.04))
-    elif name == "🔔":
-        d.ellipse([0.44 * n, 0.08 * n, 0.56 * n, 0.2 * n], fill=GOLD_M, outline=NAVY, width=ow)
-        d.pieslice([0.2 * n, 0.15 * n, 0.8 * n, 0.75 * n], 180, 360, fill=GOLD_M, outline=NAVY, width=ow)
-        d.polygon([(0.2 * n, 0.45 * n), (0.8 * n, 0.45 * n), (0.9 * n, 0.76 * n), (0.1 * n, 0.76 * n)], fill=GOLD_M, outline=NAVY, width=ow)
-        d.rectangle([0.22 * n, 0.44 * n, 0.78 * n, 0.5 * n], fill=GOLD_M)
-        d.ellipse([0.4 * n, 0.74 * n, 0.6 * n, 0.92 * n], fill=GOLD_D, outline=NAVY, width=ow)
-        d.arc([0.3 * n, 0.25 * n, 0.5 * n, 0.5 * n], 190, 260, fill=GOLD_L, width=int(n * 0.04))
-    elif name == "⭐":
-        d.polygon(_star(n / 2, n * 0.54, n * 0.46, n * 0.2), fill=GOLD_M, outline=NAVY, width=ow)
-        d.polygon(_star(n / 2, n * 0.54, n * 0.22, n * 0.1), fill=GOLD_L)
-    else:
-        pts = [(0.2 * n, 0.3 * n), (0.33 * n, 0.1 * n), (0.67 * n, 0.1 * n), (0.8 * n, 0.3 * n), (0.5 * n, 0.9 * n)]
-        d.polygon(pts, fill=(90, 205, 245), outline=NAVY, width=ow)
-        d.polygon([(0.33 * n, 0.1 * n), (0.42 * n, 0.3 * n), (0.5 * n, 0.1 * n)], fill=(160, 232, 255))
-        d.polygon([(0.2 * n, 0.3 * n), (0.8 * n, 0.3 * n), (0.5 * n, 0.9 * n)], fill=(60, 170, 225))
-        d.line([(0.2 * n, 0.3 * n), (0.8 * n, 0.3 * n)], fill=NAVY, width=int(n * 0.025))
+    P = lambda x, y: (x * n, y * n)  # noqa: E731
+    if name == "🎯":      # 조준선
+        col, dark = (255, 84, 98), (200, 50, 70)
+        d.ellipse([0.12 * n, 0.12 * n, 0.88 * n, 0.88 * n], outline=col, width=int(0.075 * n))
+        d.ellipse([0.3 * n, 0.3 * n, 0.7 * n, 0.7 * n], outline=dark, width=int(0.05 * n))
+        for a0, a1 in (((0.5, 0.0), (0.5, 0.26)), ((0.5, 1.0), (0.5, 0.74)), ((0.0, 0.5), (0.26, 0.5)), ((1.0, 0.5), (0.74, 0.5))):
+            d.line([P(*a0), P(*a1)], fill=col, width=int(0.075 * n))
+        d.ellipse([0.44 * n, 0.44 * n, 0.56 * n, 0.56 * n], fill=col)
+    elif name == "🛡️":    # 방패
+        L, R = (70, 214, 196), (40, 164, 160)
+        top, bot = 0.1, 0.92
+        d.polygon([P(0.5, top), P(0.16, 0.2), P(0.16, 0.5), P(0.5, bot)], fill=L)
+        d.polygon([P(0.5, top), P(0.84, 0.2), P(0.84, 0.5), P(0.5, bot)], fill=R)
+        d.line([P(0.34, 0.5), P(0.46, 0.62), P(0.68, 0.36)], fill=(255, 255, 255), width=int(0.075 * n), joint="curve")
+    elif name == "⚡":      # 번개
+        d.polygon([P(0.58, 0.04), P(0.2, 0.55), P(0.46, 0.55), P(0.36, 0.96), P(0.8, 0.4), P(0.54, 0.4)], fill=(255, 214, 60))
+        d.polygon([P(0.58, 0.04), P(0.54, 0.4), P(0.8, 0.4), P(0.36, 0.96), P(0.46, 0.55), P(0.5, 0.5)], fill=(255, 176, 30))
+    elif name == "👑":      # 왕관
+        g1, g2 = (255, 205, 70), (232, 160, 40)
+        d.polygon([P(0.1, 0.34), P(0.3, 0.55), P(0.5, 0.2), P(0.7, 0.55), P(0.9, 0.34), P(0.82, 0.78), P(0.18, 0.78)], fill=g1)
+        d.polygon([P(0.5, 0.2), P(0.7, 0.55), P(0.9, 0.34), P(0.82, 0.78), P(0.5, 0.78)], fill=g2)
+        d.rounded_rectangle([0.16 * n, 0.76 * n, 0.84 * n, 0.88 * n], radius=int(0.03 * n), fill=(190, 120, 30))
+        for cx, cy, c in ((0.5, 0.64, (255, 84, 98)), (0.3, 0.68, (110, 220, 255)), (0.7, 0.68, (110, 220, 255))):
+            d.ellipse([(cx - 0.045) * n, (cy - 0.045) * n, (cx + 0.045) * n, (cy + 0.045) * n], fill=c)
+    else:                  # 보석
+        d.polygon([P(0.2, 0.34), P(0.34, 0.12), P(0.5, 0.12), P(0.5, 0.34)], fill=(150, 228, 255))
+        d.polygon([P(0.5, 0.12), P(0.66, 0.12), P(0.8, 0.34), P(0.5, 0.34)], fill=(96, 196, 250))
+        d.polygon([P(0.2, 0.34), P(0.5, 0.34), P(0.5, 0.9)], fill=(70, 160, 235))
+        d.polygon([P(0.5, 0.34), P(0.8, 0.34), P(0.5, 0.9)], fill=(48, 120, 215))
     out = _down(img, size)
     _sprites[key] = out
     return out
@@ -248,53 +248,34 @@ def dice_gif(result: int) -> bytes:
 
 
 # ---------------------------------------------------------------------------
-# 슬롯
+# 슬롯 (모던 미니멀: 어두운 본체 + 밝은 심볼 + 포인트 컬러 한 가지)
 # ---------------------------------------------------------------------------
 
-INDIGO, INDIGO_D, INDIGO_L = (52, 46, 112), (34, 30, 80), (78, 70, 150)
-CREAM = (251, 247, 238)
-WIN_W, WIN_H, WIN_GAP, WIN_X, WIN_Y = 116, 156, 12, 94, 92
+ACCENT = (255, 84, 98)
+BODY, PANEL_C, CARD = (30, 34, 54), (20, 23, 38), (40, 45, 72)
+WIN_W, WIN_H, WIN_GAP, WIN_X, WIN_Y = 118, 150, 12, 92, 84
 _cabinet: Image.Image | None = None
 
 
 def _cabinet_img() -> Image.Image:
-    """움직이지 않는 부분(본체·릴 창 틀·받침)."""
     global _cabinet
     if _cabinet is not None:
         return _cabinet
-    img = Image.new("RGB", (W, H), (24, 26, 48))
+    img = Image.new("RGB", (W, H), (17, 19, 31))
     d = ImageDraw.Draw(img)
-    for i in range(-H, W, 60):
-        d.line([(i, H), (i + H, 0)], fill=(28, 30, 54), width=16)
-    d.rounded_rectangle([56, 4, 504, 312], radius=34, fill=(14, 16, 34))            # 외곽선
-    d.rounded_rectangle([62, 8, 498, 308], radius=30, fill=INDIGO)                    # 본체
-    d.rounded_rectangle([62, 8, 498, 74], radius=30, fill=INDIGO_D)                   # 간판
-    d.rectangle([62, 50, 498, 74], fill=INDIGO_D)
-    d.rounded_rectangle([72, 14, 488, 68], radius=16, outline=GOLD_M, width=3)        # 간판 금테
-    d.rounded_rectangle([68, 82, 76, 258], radius=4, fill=INDIGO_L)                   # 옆면 하이라이트
-    d.rounded_rectangle([484, 82, 492, 258], radius=4, fill=INDIGO_L)
-    d.rounded_rectangle([82, 78, 478, 262], radius=20, fill=(14, 16, 34))             # 릴 패널 오목부
-    d.rounded_rectangle([86, 82, 474, 258], radius=17, fill=(24, 24, 58), outline=GOLD_D, width=2)
+    d.rounded_rectangle([60, 10, 500, 306], radius=30, fill=BODY)
+    d.rounded_rectangle([80, 70, 480, 252], radius=20, fill=PANEL_C)
     for k in range(3):
         x = WIN_X + k * (WIN_W + WIN_GAP)
-        d.rounded_rectangle([x - 4, WIN_Y - 4, x + WIN_W + 4, WIN_Y + WIN_H + 4], radius=12, fill=GOLD_M)
-        d.rounded_rectangle([x - 1, WIN_Y - 1, x + WIN_W + 1, WIN_Y + WIN_H + 1], radius=10, fill=(14, 16, 34))
-    # 하단: 결과 표시창 + 동전 투입구
-    d.rounded_rectangle([86, 268, 474, 300], radius=14, fill=(14, 16, 34))
-    d.rounded_rectangle([90, 271, 220, 297], radius=11, fill=(8, 10, 22))               # LED 창
-    d.rounded_rectangle([262, 281, 302, 289], radius=4, fill=(60, 56, 120))               # 동전 투입구
-    d.rounded_rectangle([322, 281, 462, 289], radius=4, fill=INDIGO_L)
-    # 레버 받침
-    d.ellipse([504, 176, 532, 204], fill=(14, 16, 34))
-    d.ellipse([508, 180, 528, 200], fill=(170, 178, 200))
+        d.rounded_rectangle([x, WIN_Y, x + WIN_W, WIN_Y + WIN_H], radius=14, fill=CARD)
     _cabinet = img
     return img
 
 
-def _confetti(d: ImageDraw.ImageDraw, rng: random.Random, n: int = 28) -> None:
-    cols = [GOLD_M, (255, 90, 110), (110, 220, 255), (150, 235, 150), (255, 255, 255)]
+def _confetti(d: ImageDraw.ImageDraw, rng: random.Random, n: int = 26) -> None:
+    cols = [(255, 214, 60), ACCENT, (110, 220, 255), (120, 235, 160), (255, 255, 255)]
     for _ in range(n):
-        x, y = rng.randint(70, 490), rng.randint(6, 300)
+        x, y = rng.randint(30, 530), rng.randint(4, 306)
         c = rng.choice(cols)
         if rng.random() < 0.5:
             d.ellipse([x - 4, y - 4, x + 4, y + 4], fill=c)
@@ -302,53 +283,54 @@ def _confetti(d: ImageDraw.ImageDraw, rng: random.Random, n: int = 28) -> None:
             d.rectangle([x - 3, y - 6, x + 3, y + 6], fill=c)
 
 
-def _draw_reels(img: Image.Image, reels: list[str], f: int, stops: list[int], seqs, cell: int = 100) -> None:
+def _draw_reels(img: Image.Image, reels: list[str], f: int, stops: list[int], seqs, cell: int = 100, glow: bool = False) -> None:
     d = ImageDraw.Draw(img)
     for r in range(3):
         x = WIN_X + r * (WIN_W + WIN_GAP)
-        win = Image.new("RGBA", (WIN_W, WIN_H), CREAM + (255,))
+        win = Image.new("RGBA", (WIN_W, WIN_H), CARD + (255,))
         if f >= stops[r]:
-            spr = symbol_sprite(reels[r], 108)
-            win.paste(spr, ((WIN_W - 108) // 2, (WIN_H - 108) // 2), spr)
+            spr = symbol_sprite(reels[r], 104)
+            win.paste(spr, ((WIN_W - 104) // 2, (WIN_H - 104) // 2), spr)
         else:
             off = (f * 57 + r * 29) % cell
             for k in range(-1, WIN_H // cell + 2):
                 sym = seqs[r][(f * 2 + k + r * 5) % len(seqs[r])]
-                spr = symbol_sprite(sym, 86)
-                y = k * cell + off + (cell - 86) // 2
+                spr = symbol_sprite(sym, 80)
+                y = k * cell + off + (cell - 80) // 2
                 ghost = spr.copy()
                 ghost.putalpha(ghost.getchannel("A").point(lambda v: v // 3))
-                win.paste(ghost, ((WIN_W - 86) // 2, y - 34), ghost)      # 번짐 효과
-                win.paste(spr, ((WIN_W - 86) // 2, y), spr)
-        for i in range(10):                                                  # 위·아래 안쪽 그림자 (부드럽게)
-            a = int(64 * (1 - i / 10) ** 2)
-            band = Image.new("RGBA", (WIN_W, 3), (20, 20, 50, a))
-            win.alpha_composite(band, (0, i * 3))
-            win.alpha_composite(band, (0, WIN_H - (i + 1) * 3))
+                win.paste(ghost, ((WIN_W - 80) // 2, y - 30), ghost)      # 번짐 효과
+                win.paste(spr, ((WIN_W - 80) // 2, y), spr)
+            for i in range(8):                                            # 위·아래로 흐려지는 페이드
+                a = int(150 * (1 - i / 8) ** 2)
+                band = Image.new("RGBA", (WIN_W, 4), CARD + (a,))
+                win.alpha_composite(band, (0, i * 4))
+                win.alpha_composite(band, (0, WIN_H - (i + 1) * 4))
         mask = Image.new("L", (WIN_W, WIN_H), 0)
-        ImageDraw.Draw(mask).rounded_rectangle([0, 0, WIN_W - 1, WIN_H - 1], radius=9, fill=255)
+        ImageDraw.Draw(mask).rounded_rectangle([0, 0, WIN_W - 1, WIN_H - 1], radius=14, fill=255)
         img.paste(win.convert("RGB"), (x, WIN_Y), mask)
+        if glow:
+            d.rounded_rectangle([x - 2, WIN_Y - 2, x + WIN_W + 2, WIN_Y + WIN_H + 2], radius=16, outline=(255, 214, 60), width=3)
     cy = WIN_Y + WIN_H // 2
-    d.line([(WIN_X, cy), (WIN_X + 3 * WIN_W + 2 * WIN_GAP, cy)], fill=(255, 90, 100), width=2)
-    d.polygon([(90, cy - 8), (90, cy + 8), (100, cy)], fill=(255, 90, 100))
-    d.polygon([(470, cy - 8), (470, cy + 8), (460, cy)], fill=(255, 90, 100))
+    xr = WIN_X + 3 * WIN_W + 2 * WIN_GAP
+    d.polygon([(WIN_X - 12, cy - 7), (WIN_X - 12, cy + 7), (WIN_X - 2, cy)], fill=ACCENT)      # 당첨선 표시 (창 바깥 양쪽)
+    d.polygon([(xr + 12, cy - 7), (xr + 12, cy + 7), (xr + 2, cy)], fill=ACCENT)
 
 
-def _chrome(img: Image.Image, f: int, led: str, led_color, pull: float, glow: bool = False) -> None:
+def _chrome(img: Image.Image, led: str, led_color, pull: float, glow: bool = False) -> None:
     d = ImageDraw.Draw(img)
-    d.text((280, 41), "VP  SLOTS", font=font("heavy", 25), fill=GOLD_M, anchor="mm")
-    for b in range(17):                                                       # 간판 전구
-        on = (b + f) % 2 == 0 or glow
-        x = 86 + b * 23.5
-        for y in (22, 60):
-            d.ellipse([x - 3, y - 3, x + 3, y + 3], fill=(255, 244, 190) if on else (120, 104, 60))
-    d.text((155, 284), led, font=font("heavy", 15), fill=led_color, anchor="mm")
-    ky = 186 - 6 - pull * 0 - (1 - pull) * 62 + pull * 46                      # 레버: 위(당기기 전) → 아래
-    d.line([(518, 190), (518, ky)], fill=(170, 178, 200), width=7)
-    d.line([(515, 190), (515, ky)], fill=(210, 216, 232), width=2)
-    d.ellipse([505, ky - 15, 531, ky + 11], fill=(14, 16, 34))
-    d.ellipse([508, ky - 12, 528, ky + 8], fill=(240, 70, 90))
-    d.ellipse([511, ky - 9, 518, ky - 2], fill=(255, 170, 180))
+    d.text((280, 38), "VP SLOTS", font=font("heavy", 22), fill=(236, 238, 248), anchor="mm")
+    d.rounded_rectangle([262, 52, 298, 56], radius=2, fill=ACCENT)
+    pill = (60, 20, 28) if led_color == ACCENT else (28, 32, 52)
+    d.rounded_rectangle([190, 266, 370, 296], radius=15, fill=PANEL_C, outline=led_color if glow else (50, 56, 86), width=2)
+    d.text((280, 281), led, font=font("heavy", 16), fill=led_color, anchor="mm")
+    top, rest = 96, 170                                                       # 레버 손잡이 높이 (당기면 아래로)
+    ky = top + (rest - top) * 0.0 + 70 * pull
+    d.rounded_rectangle([510, 110, 518, 200], radius=4, fill=(60, 66, 100))
+    d.rounded_rectangle([508, 196, 520, 210], radius=5, fill=(60, 66, 100))
+    d.line([(514, 200), (514, 124 + ky - 96)], fill=(150, 158, 190), width=5)
+    d.ellipse([502, 112 + ky - 96, 526, 136 + ky - 96], fill=ACCENT)
+    d.ellipse([507, 116 + ky - 96, 515, 124 + ky - 96], fill=(255, 170, 180))
 
 
 def slot_gif(reels: list[str]) -> bytes:
@@ -362,24 +344,24 @@ def slot_gif(reels: list[str]) -> bytes:
         img = cab.copy()
         _draw_reels(img, reels, f, stops, seqs)
         pull = min(f, 4) / 4 if f < 9 else max(0.0, 1 - (f - 9) / 4)
-        _chrome(img, f, "SPIN..." if f < stops[2] else "", GOLD_M, pull)
+        _chrome(img, "SPINNING" if f < stops[2] else "", (150, 158, 190), pull)
         frames.append(img)
         durs.append(70 if f < stops[0] else 110)
     jackpot = reels[0] == reels[1] == reels[2]
     pair = len(set(reels)) == 2
-    label, col = (("JACKPOT!", GOLD_M) if jackpot else (("2 MATCH", (150, 235, 150)) if pair else ("TRY AGAIN", (150, 150, 180))))
-    if jackpot or pair:                         # 당첨 연출: 창 테두리와 전구가 번쩍이고 색종이가 흩날린다
+    label, col = (("JACKPOT", (255, 214, 60)) if jackpot else (("2 MATCH", (120, 235, 160)) if pair else ("TRY AGAIN", (130, 138, 170))))
+    if jackpot or pair:
         for k in range(4 if jackpot else 2):
             img = cab.copy()
-            _draw_reels(img, reels, 99, stops, seqs)
-            _chrome(img, k, label, col, 0.0, glow=(k % 2 == 0))
+            _draw_reels(img, reels, 99, stops, seqs, glow=(k % 2 == 0))
+            _chrome(img, label, col, 0.0, glow=True)
             if jackpot:
                 _confetti(ImageDraw.Draw(img), rng)
             frames.append(img)
             durs.append(170)
     final = cab.copy()
-    _draw_reels(final, reels, 99, stops, seqs)
-    _chrome(final, 0, label, col, 0.0, glow=jackpot)
+    _draw_reels(final, reels, 99, stops, seqs, glow=jackpot)
+    _chrome(final, label, col, 0.0, glow=jackpot or pair)
     frames.append(final)
     durs.append(3000)
     return gif_bytes(frames, durs)
