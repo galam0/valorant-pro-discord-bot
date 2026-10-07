@@ -5,11 +5,7 @@ setlocal
 cd /d "%~dp0"
 title VALORANT 봇 - PC 수집기
 
-if exist ".venv\Scripts\python.exe" goto :run
-
-echo [준비] 처음 실행이라 가상환경을 만들고 패키지를 설치합니다...
-
-REM 쓸 수 있는 파이썬 찾기 (Microsoft Store 가짜 python 은 건너뜀)
+REM 쓸 수 있는 파이썬 찾기
 set "PY="
 for %%C in ("py -3.12" "py -3" "%USERPROFILE%\miniconda3\python.exe" "%USERPROFILE%\anaconda3\python.exe" "python") do (
     if not defined PY (
@@ -19,12 +15,13 @@ for %%C in ("py -3.12" "py -3" "%USERPROFILE%\miniconda3\python.exe" "%USERPROFI
 if not defined PY goto :nopython
 echo [준비] 사용할 파이썬: %PY%
 
-%PY% -m venv .venv || goto :error
-".venv\Scripts\python.exe" -m pip install --upgrade pip > nul
-REM PC 수집기에 필요한 패키지만 설치 (봇 전체 패키지보다 훨씬 가벼움)
-".venv\Scripts\python.exe" -m pip install -r requirements-worker.txt || goto :error
+REM 수집기는 패키지 2개뿐이라 가상환경 없이 사용자 영역(--user)에 설치합니다.
+%PY% -c "import aiohttp, dotenv" > nul 2>&1
+if errorlevel 1 (
+    echo [준비] 필요한 패키지를 설치합니다 ^(처음 한 번만^)...
+    %PY% -m pip install --user -r requirements-worker.txt || goto :error
+)
 
-:run
 if not exist ".env" (
     echo [오류] .env 파일이 없습니다. .env.example 을 복사해서 .env 로 이름을 바꾸고
     echo        WORKER_TOKEN 과 BOT_URL 을 채워주세요.
@@ -32,7 +29,7 @@ if not exist ".env" (
     exit /b 1
 )
 
-".venv\Scripts\python.exe" -m bot.local_worker
+%PY% -m bot.local_worker
 pause
 exit /b 0
 
@@ -44,7 +41,6 @@ pause
 exit /b 1
 
 :error
-echo [오류] 설치 중 문제가 생겼습니다. 위 메시지를 확인해주세요.
-echo        다시 시도하려면 이 폴더의 .venv 폴더를 지우고 다시 실행하세요.
+echo [오류] 패키지 설치 중 문제가 생겼습니다. 위 메시지를 확인해주세요.
 pause
 exit /b 1
