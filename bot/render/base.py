@@ -10,7 +10,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[2]
 FONT_DIR = ROOT / "fonts"
@@ -90,6 +90,31 @@ def pill(draw: ImageDraw.ImageDraw, xy: tuple[float, float], text: str, fill: tu
     return x + w
 
 
+DARK_LUMA = 85          # 이보다 어두운 픽셀을 '검정 계열'로 본다 (0~255)
+DARK_SHARE = 0.5        # 로고의 보이는 픽셀 중 이 비율 이상이 검정 계열이면 흰색으로 바꾼다
+
+
+def lighten_dark_logo(lg: Image.Image) -> Image.Image:
+    """검정·남색 위주의 로고를 흰색으로 바꾼다 (어두운 카드 배경에서 안 보이는 문제).
+
+    색이 있는 로고(검정은 외곽선뿐인 경우)는 그대로 둔다: 어두운 픽셀이 절반 미만이면 원본 반환.
+    투명도(알파)는 유지해서 가장자리가 깨지지 않는다.
+    """
+    lg = lg.convert("RGBA")
+    alpha = lg.getchannel("A")
+    opaque = alpha.point(lambda a: 255 if a > 40 else 0)
+    total = opaque.histogram()[255]
+    if total == 0:
+        return lg
+    dark = ImageChops.multiply(lg.convert("L").point(lambda v: 255 if v < DARK_LUMA else 0), opaque)
+    if dark.histogram()[255] / total < DARK_SHARE:
+        return lg
+    white = Image.new("RGB", lg.size, (245, 245, 245))
+    out = Image.composite(white, lg.convert("RGB"), dark).convert("RGBA")
+    out.putalpha(alpha)
+    return out
+
+
 def paste_logo(img: Image.Image, logo: Image.Image | None, center: tuple[int, int], size: int,
                fallback_text: str = "?") -> None:
     """로고를 정사각형 안에 맞춰 붙인다. 없으면 이니셜 원으로 대체."""
@@ -97,6 +122,7 @@ def paste_logo(img: Image.Image, logo: Image.Image | None, center: tuple[int, in
     if logo is not None:
         lg = logo.convert("RGBA")
         lg.thumbnail((size, size), Image.LANCZOS)
+        lg = lighten_dark_logo(lg)
         img.paste(lg, (cx - lg.width // 2, cy - lg.height // 2), lg)
         return
     d = ImageDraw.Draw(img)

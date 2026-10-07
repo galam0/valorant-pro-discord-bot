@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 from tests import _stubs  # noqa: F401  (다른 import보다 먼저)
 
+from bot.render.base import lighten_dark_logo
 from bot.render.compare_card import render_compare_card
 from bot.render.player_card import render_player_card
 from bot.render.ranking_card import render_ranking_card
@@ -363,6 +364,28 @@ class ScheduleCardTest(unittest.TestCase):
             png = render_schedule_card({"event": ev, "title_sub": "오늘의 경기", "date": "10월 7일 (수)",
                                         "rows": rows, "more": more, "footer": "f"}, {})
             self.assertTrue(png.startswith(b"\x89PNG"))
+
+
+class LogoLightenTest(unittest.TestCase):
+    @staticmethod
+    def _logo(fill, size=60):
+        from PIL import Image, ImageDraw
+
+        img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        ImageDraw.Draw(img).ellipse([5, 5, size - 5, size - 5], fill=fill)
+        return img
+
+    def test_black_logo_becomes_white(self):
+        out = lighten_dark_logo(self._logo((5, 5, 5, 255)))
+        self.assertGreater(out.getpixel((30, 30))[0], 200)
+        self.assertEqual(out.getpixel((1, 1))[3], 0)  # 투명 부분 유지
+
+    def test_colored_logo_unchanged(self):
+        src = self._logo((230, 40, 60, 255))
+        self.assertEqual(lighten_dark_logo(src).getpixel((30, 30)), (230, 40, 60, 255))
+
+    def test_light_logo_unchanged(self):
+        self.assertEqual(lighten_dark_logo(self._logo((250, 250, 250, 255))).getpixel((30, 30))[:3], (250, 250, 250))
 
 
 class CommandStructureTest(unittest.TestCase):
