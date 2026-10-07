@@ -247,6 +247,10 @@ python -m unittest discover -s tests -v
 | 자동 갱신이 안 도는 것 같음 | `/관리 상태`의 "자동 갱신 (다음 실행)" 확인, `SCHEDULER_ENABLED` 확인 |
 | Neon 사용량이 빠르게 늘어남 | 자동 갱신 주기 늘리기 (`bot/scheduler.py`) 또는 `SCHEDULER_ENABLED=0` |
 
+## 이미지 출처
+
+슬롯 심볼(`assets/slot/`)은 [Microsoft Fluent Emoji](https://github.com/microsoft/fluentui-emoji) 3D 스타일 (MIT 라이선스, `assets/slot/LICENSE-fluent-emoji.txt`)입니다.
+
 ## 데이터 출처
 
 - [VLR.gg](https://www.vlr.gg) — 팀, 로스터, 경기, 대회

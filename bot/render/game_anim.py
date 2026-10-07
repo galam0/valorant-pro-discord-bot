@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import random
+from pathlib import Path
 from io import BytesIO
 from typing import Sequence
 
@@ -48,7 +49,7 @@ def _banner(img: Image.Image, text: str, color=TEXT) -> None:
 NAVY = (27, 36, 51)
 GOLD_L, GOLD_M, GOLD_D = (255, 228, 138), (255, 200, 61), (224, 162, 27)
 SS = 4
-SYMBOL_NAMES = ["🎯", "🛡️", "⚡", "👑", "💎"]
+SYMBOL_NAMES = ["🍒", "🍀", "🔥", "👑", "💎"]
 _sprites: dict = {}
 
 
@@ -131,42 +132,22 @@ def die_sprite(value: int, size: int = 240, highlight: bool = False) -> Image.Im
     return out
 
 
+SYMBOL_FILES = {"🍒": "cherries", "🍀": "clover", "🔥": "fire", "👑": "crown", "💎": "gem"}
+ASSET_DIR = Path(__file__).resolve().parents[2] / "assets" / "slot"
+
+
 def symbol_sprite(name: str, size: int = 200) -> Image.Image:
-    """모던 플랫 심볼: 외곽선 없이 두 가지 톤의 단색 도형."""
+    """슬롯 심볼: Microsoft Fluent Emoji 3D (MIT) — assets/slot/. 파일이 없으면 색 원으로 대신한다."""
     key = ("sym", name, size)
     if key in _sprites:
         return _sprites[key]
-    img, d, n = _canvas(size)
-    P = lambda x, y: (x * n, y * n)  # noqa: E731
-    if name == "🎯":      # 조준선
-        col, dark = (255, 84, 98), (200, 50, 70)
-        d.ellipse([0.12 * n, 0.12 * n, 0.88 * n, 0.88 * n], outline=col, width=int(0.075 * n))
-        d.ellipse([0.3 * n, 0.3 * n, 0.7 * n, 0.7 * n], outline=dark, width=int(0.05 * n))
-        for a0, a1 in (((0.5, 0.0), (0.5, 0.26)), ((0.5, 1.0), (0.5, 0.74)), ((0.0, 0.5), (0.26, 0.5)), ((1.0, 0.5), (0.74, 0.5))):
-            d.line([P(*a0), P(*a1)], fill=col, width=int(0.075 * n))
-        d.ellipse([0.44 * n, 0.44 * n, 0.56 * n, 0.56 * n], fill=col)
-    elif name == "🛡️":    # 방패
-        L, R = (70, 214, 196), (40, 164, 160)
-        top, bot = 0.1, 0.92
-        d.polygon([P(0.5, top), P(0.16, 0.2), P(0.16, 0.5), P(0.5, bot)], fill=L)
-        d.polygon([P(0.5, top), P(0.84, 0.2), P(0.84, 0.5), P(0.5, bot)], fill=R)
-        d.line([P(0.34, 0.5), P(0.46, 0.62), P(0.68, 0.36)], fill=(255, 255, 255), width=int(0.075 * n), joint="curve")
-    elif name == "⚡":      # 번개
-        d.polygon([P(0.58, 0.04), P(0.2, 0.55), P(0.46, 0.55), P(0.36, 0.96), P(0.8, 0.4), P(0.54, 0.4)], fill=(255, 214, 60))
-        d.polygon([P(0.58, 0.04), P(0.54, 0.4), P(0.8, 0.4), P(0.36, 0.96), P(0.46, 0.55), P(0.5, 0.5)], fill=(255, 176, 30))
-    elif name == "👑":      # 왕관
-        g1, g2 = (255, 205, 70), (232, 160, 40)
-        d.polygon([P(0.1, 0.34), P(0.3, 0.55), P(0.5, 0.2), P(0.7, 0.55), P(0.9, 0.34), P(0.82, 0.78), P(0.18, 0.78)], fill=g1)
-        d.polygon([P(0.5, 0.2), P(0.7, 0.55), P(0.9, 0.34), P(0.82, 0.78), P(0.5, 0.78)], fill=g2)
-        d.rounded_rectangle([0.16 * n, 0.76 * n, 0.84 * n, 0.88 * n], radius=int(0.03 * n), fill=(190, 120, 30))
-        for cx, cy, c in ((0.5, 0.64, (255, 84, 98)), (0.3, 0.68, (110, 220, 255)), (0.7, 0.68, (110, 220, 255))):
-            d.ellipse([(cx - 0.045) * n, (cy - 0.045) * n, (cx + 0.045) * n, (cy + 0.045) * n], fill=c)
-    else:                  # 보석
-        d.polygon([P(0.2, 0.34), P(0.34, 0.12), P(0.5, 0.12), P(0.5, 0.34)], fill=(150, 228, 255))
-        d.polygon([P(0.5, 0.12), P(0.66, 0.12), P(0.8, 0.34), P(0.5, 0.34)], fill=(96, 196, 250))
-        d.polygon([P(0.2, 0.34), P(0.5, 0.34), P(0.5, 0.9)], fill=(70, 160, 235))
-        d.polygon([P(0.5, 0.34), P(0.8, 0.34), P(0.5, 0.9)], fill=(48, 120, 215))
-    out = _down(img, size)
+    path = ASSET_DIR / f"{SYMBOL_FILES.get(name, '')}.png"
+    try:
+        out = Image.open(path).convert("RGBA").resize((size, size), Image.LANCZOS)
+    except Exception:
+        out, d, n = _canvas(size)
+        d.ellipse([n * 0.12, n * 0.12, n * 0.88, n * 0.88], fill=(255, 84, 98))
+        out = _down(out, size)
     _sprites[key] = out
     return out
 
