@@ -17,6 +17,7 @@ from bot.database.repository import TeamDetail
 from bot.render import images
 from bot.render.base import render_enabled
 from bot.render.match_card import render_match_card
+from bot.render.player_card import render_player_card
 from bot.render.team_card import render_team_card
 from bot.utils.korean import STAFF_ROLES, country_ko, role_ko, stage_ko
 
@@ -162,4 +163,101 @@ async def build_match_card(match: Match, game_id: str) -> bytes | None:
         return await asyncio.to_thread(render_match_card, data, logos)
     except Exception:
         log.exception("경기 카드 생성 실패 (match %s)", match.vlr_id)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# 선수 카드
+# ---------------------------------------------------------------------------
+
+GEAR_ORDER = [("mouse", "마우스"), ("keyboard", "키보드"), ("mousepad", "마우스패드"),
+              ("monitor", "모니터"), ("headset", "헤드셋")]
+
+
+def _fmt_num(v: float | int | None, digits: int = 3) -> str | None:
+    if v is None:
+        return None
+    if isinstance(v, float):
+        text = f"{v:.{digits}f}".rstrip("0").rstrip(".")
+        return text or "0"
+    return str(v)
+
+
+def _line_text(part: dict[str, Any], prefix: str) -> str:
+    show = str(part.get(f"show_{prefix}_lines", "")).lower()
+    if not show:
+        return "-"
+    if show != "on":
+        return "끔"
+    get = lambda k: part.get(f"{prefix}_line_{k}", "-")  # noqa: E731
+    return f"길이 {get('length')} · 두께 {get('thickness')} · 간격 {get('offset')} · 투명도 {get('opacity')}"
+
+
+def _onoff(v: str | None) -> str:
+    if not v:
+        return "-"
+    low = v.lower()
+    return "켬" if low == "on" else "끔" if low == "off" else v
+
+
+async def build_player_card(detail: Any) -> bytes | None:
+    """선수 카드 PNG (detail: repository.PlayerDetail). 실패하면 None."""
+    if not render_enabled():
+        return None
+    p, s, ch = detail.player, detail.settings, detail.crosshair
+    try:
+        tiles: list[tuple[str, str, bool]] = []
+        if s is not None:
+            for label, value, hl in (
+                ("DPI", _fmt_num(s.dpi), False),
+                ("감도", _fmt_num(s.sensitivity), False),
+                ("eDPI", _fmt_num(s.edpi, 1), True),
+                ("스코프 감도", _fmt_num(s.scoped_sensitivity), False),
+                ("폴링레이트", f"{s.polling_rate} Hz" if s.polling_rate else None, False),
+                ("윈도우 감도", _fmt_num(s.windows_sensitivity), False),
+            ):
+                tiles.append((label, value or "-", hl))
+        video = None
+        if s is not None and s.resolution:
+            video = " · ".join(x for x in (f"해상도 {s.resolution}", s.aspect_ratio, s.scaling_mode) if x)
+
+        by_cat = {e.category: e.name for e in detail.equipment}
+        gear = [(label, by_cat[key]) for key, label in GEAR_ORDER if key in by_cat]
+
+        ch_rows: list[tuple[str, str]] = []
+        raw: dict[str, Any] = {}
+        if ch is not None:
+            raw = ch.raw or {}
+            ch_rows = [
+                ("색상", ch.color or "-"),
+                ("외곽선", _onoff(ch.outlines)),
+                ("중앙 점", _onoff(ch.center_dot)),
+                ("내부 선", _line_text(raw.get("inner") or {}, "inner")),
+                ("외부 선", _line_text(raw.get("outer") or {}, "outer")),
+            ]
+
+        team = detail.team
+        fetched = await images.fetch_many({"photo": p.photo_url, "team": team.logo_url if team else None})
+        team_name = team.name if team else ((s.raw or {}).get("team") if s is not None and s.raw else None)
+        updated = None
+        if s is not None and s.source_updated_at:
+            u = s.source_updated_at.astimezone(DISPLAY_TZ)
+            updated = f"{u.year}년 {u.month}월 {u.day}일"
+        data = {
+            "name": p.nickname,
+            "real_name": p.real_name,
+            "team": team_name,
+            "country": country_ko(p.country_code, p.country_name),
+            "tiles": tiles,
+            "video": video,
+            "gear": gear,
+            "crosshair_rows": ch_rows,
+            "crosshair_raw": raw,
+            "crosshair_code": ch.code if ch is not None else None,
+            "updated": updated,
+            "empty_message": "ProSettings에 등록된 설정이 없는 선수입니다.",
+        }
+        return await asyncio.to_thread(render_player_card, data, fetched)
+    except Exception:
+        log.exception("선수 카드 생성 실패 (%s)", p.nickname)
         return None

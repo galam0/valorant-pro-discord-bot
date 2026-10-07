@@ -434,6 +434,199 @@ async def upsert_tournament(session: AsyncSession, event: EventRef) -> int:
 
 
 # ---------------------------------------------------------------------------
+# 선수 설정 저장 (ProSettings)
+# ---------------------------------------------------------------------------
+
+
+def _to_int(v: str | None) -> int | None:
+    try:
+        return int(float(str(v).replace(",", ""))) if v not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def _to_float(v: str | None) -> float | None:
+    try:
+        return float(str(v).replace(",", "")) if v not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def _lines_summary(part: dict[str, str], prefix: str) -> str | None:
+    """'On · 1 / 3 / 2 / 2' (불투명도 / 길이 / 두께 / 간격)"""
+    show = part.get(f"show_{prefix}_lines")
+    if show is None:
+        return None
+    if show.lower() != "on":
+        return "Off"
+    vals = [part.get(f"{prefix}_line_{k}", "-") for k in ("opacity", "length", "thickness", "offset")]
+    return "On · " + " / ".join(vals)
+
+
+async def save_pro_player(session: AsyncSession, pro: Any) -> Player:
+    """ProSettings 선수 페이지(ProPlayer) 저장. 선수 레코드가 없으면 만든다."""
+    now = utcnow()
+
+    player = (
+        await session.execute(select(Player).where(Player.prosettings_slug == pro.slug))
+    ).scalar_one_or_none()
+    if player is None:
+        # VLR에서 먼저 저장된 같은 닉네임 선수와 연결 (동명이인이 여럿이면 연결하지 않음)
+        same = (
+            await session.execute(
+                select(Player).where(func.lower(Player.nickname) == pro.nickname.lower(),
+                                     Player.prosettings_slug.is_(None))
+            )
+        ).scalars().all()
+        player = same[0] if len(same) == 1 else None
+    if player is None:
+        player = Player(nickname=pro.nickname)
+        session.add(player)
+
+    player.prosettings_slug = pro.slug
+    player.prosettings_url = pro.url
+    player.real_name = pro.real_name or player.real_name
+    player.country_code = pro.country_code or player.country_code
+    player.country_name = pro.country_name or player.country_name
+    if pro.photo_url:
+        player.photo_url = pro.photo_url  # ProSettings 사진(정사각형, 고화질)을 우선 사용
+    if player.current_team_id is None and pro.team_name:
+        team = (
+            await session.execute(select(Team).where(func.lower(Team.name) == pro.team_name.lower()))
+        ).scalars().first()
+        if team is not None:
+            player.current_team_id = team.id
+    player.updated_at = now
+    await session.flush()
+
+    m = pro.mouse
+    settings_values = dict(
+        player_id=player.id,
+        dpi=_to_int(m.get("dpi")),
+        sensitivity=_to_float(m.get("sensitivity")),
+        edpi=_to_float(m.get("edpi")),
+        scoped_sensitivity=_to_float(m.get("zoom_sensitivity")),
+        polling_rate=_to_int(m.get("hz")),
+        windows_sensitivity=_to_int(m.get("windows_sensitivity")),
+        resolution=pro.video.get("resolution"),
+        aspect_ratio=pro.video.get("aspect_ratio"),
+        scaling_mode=pro.video.get("aspect_ratio_method"),
+        raw={"mouse": m, "video": pro.video, "team": pro.team_name},
+        source_updated_at=pro.last_updated,
+        last_scraped_at=now,
+    )
+    if settings_values["edpi"] is None and settings_values["dpi"] and settings_values["sensitivity"]:
+        settings_values["edpi"] = round(settings_values["dpi"] * settings_values["sensitivity"], 2)
+    st = pg_insert(PlayerSettings).values(**settings_values)
+    st = st.on_conflict_do_update(
+        index_elements=[PlayerSettings.player_id],
+        set_={**{k: st.excluded[k] for k in settings_values if k != "player_id"}, "updated_at": now},
+    )
+    await session.execute(st)
+
+    # 장비는 매번 통째로 교체
+    await session.execute(delete(Equipment).where(Equipment.player_id == player.id))
+    for category, name, url in pro.gear:
+        session.add(Equipment(player_id=player.id, category=category.lower(), name=name[:200], product_url=url))
+
+    c = pro.crosshair
+    color = c.get("color")
+    if c.get("crosshair_color"):
+        color = f"{color} ({c['crosshair_color']})" if color else c["crosshair_color"]
+    ch_values = dict(
+        player_id=player.id,
+        code=c.get("code"),
+        color=color[:40] if color else None,
+        outlines=c.get("outlines"),
+        center_dot=c.get("center_dot"),
+        inner_lines=_lines_summary(pro.crosshair_inner, "inner"),
+        outer_lines=_lines_summary(pro.crosshair_outer, "outer"),
+        raw={"primary": c, "inner": pro.crosshair_inner, "outer": pro.crosshair_outer},
+    )
+    ch = pg_insert(Crosshair).values(**ch_values)
+    ch = ch.on_conflict_do_update(
+        index_elements=[Crosshair.player_id],
+        set_={**{k: ch.excluded[k] for k in ch_values if k != "player_id"}, "updated_at": now},
+    )
+    await session.execute(ch)
+    await session.flush()
+    return player
+
+
+@dataclass
+class PlayerLookup:
+    player: Player | None
+    candidates: list[Player]
+    guessed: bool = False  # 오타 보정(퍼지 매칭)으로 찾은 경우
+
+
+async def find_player(session: AsyncSession, query: str) -> PlayerLookup:
+    """선수 찾기: 닉네임 정확히 → slug → 정규화 키 → 비슷한 닉네임(오타 보정, 확실할 때만)."""
+    import difflib
+
+    q = query.strip().lower()
+    if not q:
+        return PlayerLookup(None, [])
+    exact = (await session.execute(select(Player).where(func.lower(Player.nickname) == q))).scalars().all()
+    # 같은 닉네임이 여럿이면 설정 정보가 있는 선수 → 소속팀이 있는 선수 순으로 고른다
+    if exact:
+        exact = sorted(exact, key=lambda p: (p.prosettings_slug is None, p.current_team_id is None))
+        return PlayerLookup(exact[0], list(exact[1:5]))
+
+    by_slug = (await session.execute(select(Player).where(Player.prosettings_slug == q))).scalar_one_or_none()
+    if by_slug is not None:
+        return PlayerLookup(by_slug, [])
+
+    rows = (await session.execute(select(Player.id, Player.nickname))).all()
+    key = normalize_key(q)
+    by_key = [pid for pid, nick in rows if normalize_key(nick) == key]
+    if len(by_key) == 1:
+        return PlayerLookup(await session.get(Player, by_key[0]), [])
+
+    # 오타·숫자 치환 보정: texture → t3xture, tenz → TenZ
+    def loose(s: str) -> str:
+        return normalize_key(s).translate(str.maketrans("013457", "oieast"))
+
+    names = {pid: loose(nick) for pid, nick in rows}
+    lq = loose(q)
+    scored = sorted(
+        ((difflib.SequenceMatcher(None, lq, n).ratio(), pid) for pid, n in names.items() if n),
+        reverse=True,
+    )
+    good = [(score, pid) for score, pid in scored if score >= 0.8]
+    if good and (len(good) == 1 or good[0][0] - good[1][0] >= 0.08 or good[0][0] == 1.0):
+        return PlayerLookup(await session.get(Player, good[0][1]), [], guessed=True)
+    candidates = [await session.get(Player, pid) for _, pid in scored[:5] if _ >= 0.6]
+    return PlayerLookup(None, [c for c in candidates if c is not None])
+
+
+@dataclass
+class PlayerDetail:
+    player: Player
+    team: Team | None
+    settings: PlayerSettings | None
+    equipment: list[Equipment]
+    crosshair: Crosshair | None
+
+
+async def get_player_detail(session: AsyncSession, player_id: int) -> PlayerDetail | None:
+    player = await session.get(Player, player_id)
+    if player is None:
+        return None
+    team = await session.get(Team, player.current_team_id) if player.current_team_id else None
+    settings = (
+        await session.execute(select(PlayerSettings).where(PlayerSettings.player_id == player_id))
+    ).scalar_one_or_none()
+    crosshair = (
+        await session.execute(select(Crosshair).where(Crosshair.player_id == player_id))
+    ).scalar_one_or_none()
+    equipment = (
+        await session.execute(select(Equipment).where(Equipment.player_id == player_id))
+    ).scalars().all()
+    return PlayerDetail(player, team, settings, list(equipment), crosshair)
+
+
+# ---------------------------------------------------------------------------
 # 조회 (Discord 명령어용)
 # ---------------------------------------------------------------------------
 

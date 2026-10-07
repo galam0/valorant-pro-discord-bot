@@ -13,6 +13,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.commands.player import send_player
 from bot.database import repository as repo
 from bot.database.database import db
 from bot.embeds.common import COLOR_INFO, COLOR_OK, error_embed, ts
@@ -144,6 +145,13 @@ class AdminGroup(app_commands.Group, name="관리", description="관리자 전�
         task = asyncio.create_task(run())
         _background_tasks.add(task)
         task.add_done_callback(_background_tasks.discard)
+
+    @app_commands.command(name="선수갱신", description="ProSettings에서 선수 설정을 다시 가져옵니다 (12시간 캐시 무시).")
+    @app_commands.describe(닉네임="선수 닉네임 (예: stax)")
+    @app_commands.checks.cooldown(1, 10)
+    async def refresh_player(self, interaction: discord.Interaction, 닉네임: str) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        await send_player(interaction, 닉네임, force=True)
 
     @app_commands.command(name="경기갱신", description="VLR.gg에서 진행 중·예정 경기와 최근 결과를 다시 가져옵니다.")
     @app_commands.checks.cooldown(1, 30)
