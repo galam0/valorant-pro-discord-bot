@@ -10,11 +10,12 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.database.database import db
-from bot.embeds.common import error_embed
+from bot.embeds.common import COLOR_INFO, error_embed
 from bot.embeds.player import player_embed
 from bot.render.cards import build_player_card
 from bot.scrapers.http import ScrapeError
 from bot.services import player_service
+from bot.utils.config import settings
 from bot.views.player import PlayerView
 from bot.worker_bridge import WorkerUnavailable
 
@@ -76,6 +77,16 @@ class PlayerCommands(commands.Cog):
     @app_commands.command(name="선수", description="프로 선수의 감도·DPI·장비·크로스헤어를 보여줍니다.")
     @app_commands.describe(닉네임="선수 닉네임 (예: stax, t3xture). 철자가 조금 달라도 찾아요")
     async def player(self, interaction: discord.Interaction, 닉네임: str) -> None:
+        if not settings.player_command_enabled and interaction.user.id not in settings.admin_user_ids:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="🚧 아직 사용할 수 없는 명령어입니다",
+                    description="`/선수` 기능은 준비 중입니다. 조금만 기다려주세요!",
+                    color=COLOR_INFO,
+                ),
+                ephemeral=True,
+            )
+            return
         if not db.configured:
             await interaction.response.send_message(embed=error_embed("현재 데이터를 불러올 수 없습니다."), ephemeral=True)
             return

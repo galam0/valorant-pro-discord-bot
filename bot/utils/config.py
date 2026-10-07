@@ -53,6 +53,10 @@ class Settings:
     worker_token: str | None = field(default_factory=lambda: os.getenv("WORKER_TOKEN") or None)
     # PC 수집기가 접속할 봇 주소 (PC 쪽 .env 에서만 사용)
     bot_url: str | None = field(default_factory=lambda: (os.getenv("BOT_URL") or "").rstrip("/") or None)
+    # /선수 명령어 공개 여부 (기본 꺼짐: ProSettings 허가 전까지 일반 사용자에게는 "준비 중" 안내)
+    player_command_enabled: bool = field(
+        default_factory=lambda: os.getenv("PLAYER_COMMAND_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
+    )
     # 시작할 때 Alembic 마이그레이션을 자동 적용할지 (기본 켬)
     auto_migrate: bool = field(
         default_factory=lambda: os.getenv("AUTO_MIGRATE", "1").strip().lower() not in {"0", "false", "no"}
