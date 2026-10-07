@@ -3,7 +3,7 @@
 VALORANT 프로팀·프로 선수 정보를 Discord Slash Command로 조회하는 봇입니다.
 데이터는 [VLR.gg](https://www.vlr.gg)와 [ProSettings.net](https://prosettings.net)의 공개 정보를 수집해 PostgreSQL에 저장한 뒤 제공합니다.
 
-> 현재 상태: **Phase 1** — `/ping` 동작, `/팀` · `/선수` 명령어 등록(준비 중 안내)
+> 현재 상태: **Phase 2** — PostgreSQL(Neon) 연결·스키마, `/ping`에 DB 상태 표시. `/팀` · `/선수`는 준비 중
 
 ## 주요 기능 (로드맵)
 
@@ -80,7 +80,26 @@ Render 무료 PostgreSQL은 30일 뒤 만료되므로 [Neon](https://neon.com) �
 2. Dashboard → **Connect** → 연결 문자열 복사 (`postgresql://...?sslmode=require`)
 3. Render 환경변수 `DATABASE_URL`에 붙여넣기
 
-> 무료 플랜은 월 100 CU-hours이며 5분간 쿼리가 없으면 자동 일시정지됩니다. 스크래퍼 주기는 이 한도에 맞춰 설계합니다. (Phase 2·6에서 적용)
+> 무료 플랜은 월 100 CU-hours이며 5분간 쿼리가 없으면 자동 일시정지됩니다. 스크래퍼 주기는 이 한도에 맞춰 설계합니다. (Phase 6)
+> 이 때문에 `/health`는 DB에 쿼리하지 않습니다. (UptimeRobot이 5분마다 DB를 깨우면 한도를 넘음)
+
+### 스키마 관리 (Alembic)
+
+- 봇이 시작할 때 `alembic upgrade head`를 자동으로 적용합니다. (`AUTO_MIGRATE=0`으로 끌 수 있음)
+- 모델(`bot/database/models.py`)을 바꾼 뒤에는 마이그레이션 파일을 만들어 커밋합니다.
+
+```bash
+alembic revision --autogenerate -m "변경 내용"   # migrations/versions/ 에 파일 생성
+alembic upgrade head                            # 로컬 DB에 적용
+```
+
+| 테이블 | 내용 |
+|---|---|
+| `teams` / `team_aliases` | 팀, 검색 별칭 (젠지 → GEN.G) |
+| `players` / `team_members` | 선수, 팀 로스터·코치진 |
+| `tournaments` / `matches` | 대회, 경기 |
+| `player_settings` / `equipment` / `crosshairs` | 감도·DPI, 장비, 크로스헤어 |
+| `scrape_runs` | 데이터 수집 실행 기록 |
 
 ## Render 배포 (무료 Web Service)
 

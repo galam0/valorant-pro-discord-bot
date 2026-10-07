@@ -1,4 +1,4 @@
-"""VALORANT 프로팀 정보 Discord Bot 진입점 (Phase 1).
+"""VALORANT 프로팀 정보 Discord Bot 진입점.
 
 실행: python -m bot.main
 """
@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import sys
 import time
 
@@ -15,44 +14,13 @@ import discord
 from aiohttp import web
 from discord import app_commands
 from discord.ext import commands
-from dotenv import load_dotenv
 
-# ---------------------------------------------------------------------------
-# 설정 / 로깅 (Phase 2 이후 bot/utils/config.py, logger.py 로 분리 예정)
-# ---------------------------------------------------------------------------
+from bot.database.database import db
+from bot.utils.config import settings
+from bot.utils.logger import setup_logging
 
-load_dotenv()
-
-LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
-
-logging.basicConfig(
-    level=LOG_LEVEL,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    stream=sys.stdout,
-)
-logging.getLogger("discord").setLevel(logging.WARNING)
-# 음성 기능을 쓰지 않으므로 "PyNaCl is not installed" 경고는 숨김
-logging.getLogger("discord.client").setLevel(logging.ERROR)
+setup_logging(settings.log_level)
 logger = logging.getLogger("valobot")
-
-
-def _parse_guild_id(raw: str | None) -> int | None:
-    if not raw:
-        return None
-    try:
-        return int(raw)
-    except ValueError:
-        logger.warning("DEV_GUILD_ID 값이 숫자가 아닙니다: %r (무시함)", raw)
-        return None
-
-
-DISCORD_TOKEN: str | None = os.getenv("DISCORD_TOKEN")
-DEV_GUILD_ID: int | None = _parse_guild_id(os.getenv("DEV_GUILD_ID"))
-
-# Render Web Service는 PORT 환경변수를 주입하고, 그 포트가 열려 있어야 배포가 성공한다.
-# 로컬에서는 PORT가 없으므로 헬스체크 서버를 띄우지 않는다.
-HEALTH_PORT: int | None = int(os.environ["PORT"]) if os.getenv("PORT", "").isdigit() else None
 
 # Discord(Cloudflare) 429 차단 시 재시도 대기 시간 (초)
 RETRY_BASE_DELAY = 60
@@ -67,24 +35,36 @@ EMBED_COLOR = discord.Color.from_rgb(255, 70, 85)  # VALORANT 레드
 # Discord 로그인과 무관하게 프로세스 시작 직후 띄운다.
 #  - Render는 포트가 열려야 배포 성공으로 판단한다.
 #  - 로그인이 429로 막혀 재시도 대기 중이어도 프로세스가 살아 있어야 한다.
-#    (프로세스가 죽으면 Render가 즉시 재시작 → 또 로그인 시도 → 차단이 길어짐)
 #  - UptimeRobot이 /health 를 5분마다 호출해 무료 인스턴스가 잠들지 않게 한다.
+#
+# 주의: /health 에서 DB에 쿼리하지 않는다.
+#   5분마다 DB를 깨우면 Neon 무료 플랜이 일시정지되지 못해 월 컴퓨트 한도(100 CU-h)를 넘는다.
+#   DB 상태는 마지막으로 확인된 결과만 보여준다.
 
 
 class HealthServer:
     def __init__(self) -> None:
         self.started_at: float = time.time()
         self.bot: ValorantBot | None = None
-        self.state: str = "starting"  # starting | ok | rate_limited | error
+        self.state: str = "starting"  # starting | ok | rate_limited
         self.next_retry_at: float | None = None
         self._runner: web.AppRunner | None = None
 
     async def _handle(self, _request: web.Request) -> web.Response:
         ready = self.bot is not None and self.bot.is_ready()
+        if not db.configured:
+            db_state = "not_configured"
+        elif db.last_error:
+            db_state = "error"
+        elif db.last_ok_at:
+            db_state = "ok"
+        else:
+            db_state = "unknown"
         body = {
             "status": "ok" if ready else self.state,
             "discord_ready": ready,
             "latency_ms": round(self.bot.latency * 1000) if ready and self.bot else None,
+            "database": db_state,
             "uptime_s": int(time.time() - self.started_at),
             "next_retry_in_s": (
                 max(0, int(self.next_retry_at - time.time())) if self.next_retry_at else None
@@ -108,6 +88,39 @@ class HealthServer:
 
 
 # ---------------------------------------------------------------------------
+# DB 초기화
+# ---------------------------------------------------------------------------
+
+
+async def init_database() -> None:
+    """DB 연결 + 마이그레이션. 실패해도 예외를 던지지 않는다 (봇은 DB 없이도 켜져야 함)."""
+    if not settings.database_url:
+        logger.warning("DATABASE_URL이 없습니다. DB 기능 없이 실행합니다.")
+        return
+
+    try:
+        db.configure(settings.database_url)
+    except Exception:
+        logger.exception("DATABASE_URL 형식이 올바르지 않습니다. DB 기능 없이 실행합니다.")
+        return
+
+    if settings.auto_migrate:
+        try:
+            # 순환 import 및 alembic 로딩 비용을 피하기 위해 필요할 때만 import
+            from bot.database.migrate import upgrade_to_head
+
+            await upgrade_to_head(settings.database_url)
+        except Exception as exc:
+            db.last_error = f"마이그레이션 실패: {type(exc).__name__}: {exc}"
+            logger.exception("DB 마이그레이션 실패 (봇은 계속 실행)")
+            return
+
+    ms = await db.ping()
+    if ms is not None:
+        logger.info("DB 연결 확인 (%.0fms)", ms)
+
+
+# ---------------------------------------------------------------------------
 # Bot
 # ---------------------------------------------------------------------------
 
@@ -122,12 +135,12 @@ class ValorantBot(commands.Bot):
         """로그인 직후 1회 실행. Slash Command를 Discord에 동기화한다."""
         register_commands(self.tree)
 
-        if DEV_GUILD_ID:
+        if settings.dev_guild_id:
             # 개발 서버에만 즉시 동기화 (반영까지 수 초)
-            guild = discord.Object(id=DEV_GUILD_ID)
+            guild = discord.Object(id=settings.dev_guild_id)
             self.tree.copy_global_to(guild=guild)
             synced = await self.tree.sync(guild=guild)
-            logger.info("개발 서버(%s)에 명령어 %d개 동기화 완료", DEV_GUILD_ID, len(synced))
+            logger.info("개발 서버(%s)에 명령어 %d개 동기화 완료", settings.dev_guild_id, len(synced))
         else:
             # 전역 동기화 (처음 반영까지 최대 1시간 걸릴 수 있음)
             synced = await self.tree.sync()
@@ -145,15 +158,22 @@ class ValorantBot(commands.Bot):
 
 
 def register_commands(tree: app_commands.CommandTree) -> None:
-    @tree.command(name="ping", description="봇 응답 속도를 확인합니다.")
+    @tree.command(name="ping", description="봇과 데이터베이스 응답 속도를 확인합니다.")
     async def ping(interaction: discord.Interaction) -> None:
+        # DB가 일시정지 상태면 깨우는 데 몇 초 걸릴 수 있어 먼저 응답을 예약한다
+        await interaction.response.defer()
+
         latency_ms = round(interaction.client.latency * 1000)
-        embed = discord.Embed(
-            title="🏓 Pong!",
-            description=f"응답 속도: **{latency_ms}ms**",
-            color=EMBED_COLOR,
-        )
-        await interaction.response.send_message(embed=embed)
+        if not db.configured:
+            db_text = "⚪ 설정 안 됨"
+        else:
+            db_ms = await db.ping()
+            db_text = f"🟢 {db_ms:.0f}ms" if db_ms is not None else "🔴 연결 실패"
+
+        embed = discord.Embed(title="🏓 Pong!", color=EMBED_COLOR)
+        embed.add_field(name="Discord", value=f"🟢 {latency_ms}ms", inline=True)
+        embed.add_field(name="데이터베이스", value=db_text, inline=True)
+        await interaction.followup.send(embed=embed)
 
     @tree.command(name="팀", description="VALORANT 프로팀 정보를 조회합니다.")
     @app_commands.describe(이름="팀 이름 (예: T1, 젠지, DRX)")
@@ -221,7 +241,6 @@ async def run_forever(token: str, health: HealthServer | None) -> None:
             if exc.status != 429:
                 raise
             kind = "Cloudflare IP 차단(1015)" if _is_cloudflare_ban(exc) else "Discord 속도 제한"
-            # HTML 전문 대신 한 줄만 기록
             logger.warning("로그인 실패: %s. %d초 후 재시도합니다.", kind, delay)
             if health:
                 health.state = "rate_limited"
@@ -232,23 +251,25 @@ async def run_forever(token: str, health: HealthServer | None) -> None:
 
 async def amain(token: str) -> None:
     health: HealthServer | None = None
-    if HEALTH_PORT:
+    if settings.port:
         health = HealthServer()
-        await health.start(HEALTH_PORT)
+        await health.start(settings.port)
     try:
+        await init_database()
         await run_forever(token, health)
     finally:
+        await db.dispose()
         if health:
             await health.stop()
 
 
 def main() -> None:
-    if not DISCORD_TOKEN:
+    if not settings.discord_token:
         logger.critical("DISCORD_TOKEN 환경변수가 없습니다. .env 파일을 확인하세요.")
         sys.exit(1)
 
     try:
-        asyncio.run(amain(DISCORD_TOKEN))
+        asyncio.run(amain(settings.discord_token))
     except KeyboardInterrupt:
         logger.info("종료합니다.")
     except discord.LoginFailure:
