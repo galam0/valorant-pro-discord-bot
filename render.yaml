@@ -27,5 +27,7 @@ services:
         sync: false
       - key: ADMIN_USER_IDS
         sync: false
+      - key: WORKER_TOKEN
+        sync: false            # PC 수집기와 공유하는 비밀값
       - key: LOG_LEVEL
         value: INFO

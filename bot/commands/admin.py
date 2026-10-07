@@ -22,6 +22,7 @@ from bot.scrapers.vlr import ParseError
 from bot.services import match_service, team_service
 from bot.utils.aliases import MAJOR_TEAMS
 from bot.utils.config import settings
+from bot.worker_bridge import bridge
 
 log = logging.getLogger("valobot.cmd.admin")
 
@@ -172,6 +173,9 @@ class AdminGroup(app_commands.Group, name="관리", description="관리자 전�
         embed = discord.Embed(title="🛠️ 봇 상태", color=COLOR_INFO)
         embed.add_field(name="Discord", value=f"{round(self.bot.latency * 1000)}ms · 서버 {len(self.bot.guilds)}곳")
         embed.add_field(name="가동 시간", value=_uptime(time.time() - self.started_at))
+        if bridge.enabled:
+            worker = f"🟢 켜짐 ({bridge.worker_name}) · 처리 {bridge.completed}건" if bridge.online else "💤 꺼짐"
+            embed.add_field(name="PC 수집기", value=worker)
 
         if not db.configured:
             embed.add_field(name="DB", value="⚪ 설정 안 됨", inline=False)

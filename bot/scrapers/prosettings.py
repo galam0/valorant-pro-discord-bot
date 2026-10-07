@@ -156,14 +156,28 @@ class ProSettingsScraper:
     def __init__(self, client: HttpClient | None = None) -> None:
         self.client = client or http_client
 
+    async def _get_html(self, url: str) -> str:
+        """WORKER_TOKEN 이 설정돼 있으면 PC 수집기를 통해, 아니면 직접 요청한다.
+        (ProSettings는 Render 같은 데이터센터 IP를 차단해서 봇에서 직접 요청하면 403)"""
+        from bot.worker_bridge import bridge  # 순환 import 방지
+
+        if not bridge.enabled:
+            try:
+                return await self.client.get_text(url)
+            except ScrapeError as exc:
+                if exc.status == 404:
+                    raise PlayerPageNotFound(url) from exc
+                raise
+
+        result = await bridge.fetch(url)
+        if result.status == 200 and result.html:
+            return result.html
+        if result.status == 404:
+            raise PlayerPageNotFound(url)
+        raise ScrapeError(f"PC 수집기 요청 실패 ({result.status}): {result.error or url}", status=result.status)
+
     async def fetch_player(self, slug: str) -> ProPlayer:
-        url = f"{BASE_URL}/players/{slug}/"
-        try:
-            html = await self.client.get_text(url)
-        except ScrapeError as exc:
-            if exc.status == 404:
-                raise PlayerPageNotFound(slug) from exc
-            raise
+        html = await self._get_html(f"{BASE_URL}/players/{slug}/")
         # 선수 페이지는 250KB 정도 → 파싱은 별도 스레드에서
         return await asyncio.to_thread(parse_player_page, html, slug)
 

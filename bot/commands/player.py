@@ -16,6 +16,7 @@ from bot.render.cards import build_player_card
 from bot.scrapers.http import ScrapeError
 from bot.services import player_service
 from bot.views.player import PlayerView
+from bot.worker_bridge import WorkerUnavailable
 
 log = logging.getLogger("valobot.cmd.player")
 
@@ -32,6 +33,10 @@ async def send_player(interaction: discord.Interaction, query: str, *, force: bo
             msg = f"'{query}' 선수 정보를 찾을 수 없습니다.\n닉네임 철자를 확인해주세요."
         await interaction.followup.send(embed=error_embed(msg))
         return
+    except WorkerUnavailable:
+        await interaction.followup.send(embed=error_embed(
+            f"'{query}' 선수는 아직 저장된 정보가 없고, 수집 PC가 꺼져 있어 가져올 수 없습니다."))
+        return
     except ScrapeError:
         await interaction.followup.send(embed=error_embed("ProSettings에서 정보를 가져오지 못했습니다. 잠시 후 다시 시도해주세요."))
         return
@@ -39,15 +44,23 @@ async def send_player(interaction: discord.Interaction, query: str, *, force: bo
     notes = []
     if result.guessed_from:
         notes.append(f"🔎 '{result.guessed_from}' → **{result.detail.player.nickname}** 선수로 찾았어요.")
-    if result.stale:
+    if result.worker_offline and result.stale:
+        notes.append("💤 수집 PC가 꺼져 있어 마지막으로 저장된 설정을 표시합니다.")
+    elif result.worker_offline:
+        notes.append("💤 수집 PC가 꺼져 있어 설정을 가져오지 못했습니다. PC 수집기를 켠 뒤 다시 시도해주세요.")
+    elif result.stale:
         notes.append("⚠️ 최신 정보를 가져오지 못해 이전에 저장된 설정을 표시합니다.")
     elif result.fetch_error:
         notes.append("⚠️ ProSettings에서 설정을 가져오지 못했습니다. 잠시 후 다시 시도해주세요.")
     content = "\n".join(notes) or None
 
     view = PlayerView(result.detail)
-    empty = ("ProSettings에서 설정을 가져오지 못했습니다." if result.fetch_error
-             else "ProSettings에 등록된 설정이 없는 선수입니다.")
+    if result.worker_offline:
+        empty = "수집 PC가 꺼져 있어 설정을 가져오지 못했습니다."
+    elif result.fetch_error:
+        empty = "ProSettings에서 설정을 가져오지 못했습니다."
+    else:
+        empty = "ProSettings에 등록된 설정이 없는 선수입니다."
     png = await build_player_card(result.detail, empty_message=empty)
     if png is not None:
         file = discord.File(BytesIO(png), filename=f"player_{result.detail.player.id}.png")

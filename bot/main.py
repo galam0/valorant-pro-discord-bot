@@ -19,6 +19,7 @@ from bot.database.database import db
 from bot.render import images as card_images
 from bot.scrapers.http import http_client
 from bot.utils.config import settings
+from bot.worker_bridge import bridge
 from bot.utils.logger import setup_logging
 
 setup_logging(settings.log_level)
@@ -65,6 +66,7 @@ class HealthServer:
             "discord_ready": ready,
             "latency_ms": round(self.bot.latency * 1000) if ready and self.bot else None,
             "database": db_state,
+            "worker": ("online" if bridge.online else "offline") if bridge.enabled else "disabled",
             "uptime_s": int(time.time() - self.started_at),
             "next_retry_in_s": (
                 max(0, int(self.next_retry_at - time.time())) if self.next_retry_at else None
@@ -74,9 +76,10 @@ class HealthServer:
         return web.json_response(body)
 
     async def start(self, port: int) -> None:
-        app = web.Application()
+        app = web.Application(client_max_size=4 * 1024 * 1024)  # PC 수집기가 보내는 HTML(약 300KB) 수용
         app.router.add_get("/", self._handle)
         app.router.add_get("/health", self._handle)
+        bridge.register(app)
         self._runner = web.AppRunner(app, access_log=None)
         await self._runner.setup()
         await web.TCPSite(self._runner, host="0.0.0.0", port=port).start()

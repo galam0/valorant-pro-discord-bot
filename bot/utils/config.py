@@ -49,6 +49,10 @@ class Settings:
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO").upper())
     # Render가 주입. 있으면 /health 서버를 띄운다.
     port: int | None = field(default_factory=lambda: _int_or_none("PORT"))
+    # PC 수집기와 봇이 공유하는 비밀값 (설정하면 ProSettings 요청을 PC 수집기에 맡김)
+    worker_token: str | None = field(default_factory=lambda: os.getenv("WORKER_TOKEN") or None)
+    # PC 수집기가 접속할 봇 주소 (PC 쪽 .env 에서만 사용)
+    bot_url: str | None = field(default_factory=lambda: (os.getenv("BOT_URL") or "").rstrip("/") or None)
     # 시작할 때 Alembic 마이그레이션을 자동 적용할지 (기본 켬)
     auto_migrate: bool = field(
         default_factory=lambda: os.getenv("AUTO_MIGRATE", "1").strip().lower() not in {"0", "false", "no"}
