@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
 import time
 
@@ -19,7 +20,7 @@ from bot.database.database import db
 from bot.embeds.common import COLOR_INFO, COLOR_OK, error_embed, ts
 from bot.scrapers.http import ScrapeError
 from bot.scrapers.vlr import ParseError
-from bot.services import match_service, team_service
+from bot.services import emoji_service, match_service, team_service
 from bot import scheduler
 from bot.utils.aliases import MAJOR_TEAMS
 from bot.utils.config import settings
@@ -268,6 +269,55 @@ class AdminGroup(app_commands.Group, name="관리", description="관리자 전�
         embed.add_field(name="자동 생성", value=", ".join(f"`{a}`" for a in auto)[:1000] or "없음", inline=False)
         embed.set_footer(text="별칭은 공백·기호·대소문자를 구분하지 않아 소문자로 저장됩니다")
         await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="이모지생성", description="저장된 모든 팀 로고로 봇 전용 이모지를 만듭니다 (몇 분 걸림).")
+    @app_commands.describe(덮어쓰기="이미 만든 팀 이모지도 지우고 다시 만들기 (로고가 바뀐 경우)")
+    @app_commands.checks.cooldown(1, 60)
+    async def make_emojis(self, interaction: discord.Interaction, 덮어쓰기: bool = False) -> None:
+        if not db.configured:
+            await interaction.response.send_message(embed=error_embed("DB가 연결되지 않았습니다."), ephemeral=True)
+            return
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                title="⏳ 팀 이모지 만드는 중",
+                description="팀당 약 1~2초 걸려요. 끝나면 이 메시지가 결과로 바뀝니다.",
+                color=COLOR_INFO,
+            ),
+            ephemeral=True,
+        )
+
+        async def run() -> None:
+            try:
+                res = await emoji_service.create_team_emojis(self.bot, overwrite=덮어쓰기)
+            except Exception as exc:
+                log.exception("팀 이모지 생성 실패")
+                await _safe_edit(interaction, error_embed(f"이모지 생성 중 오류: {exc}"))
+                return
+            embed = discord.Embed(
+                title="✅ 팀 이모지 완료",
+                description=(f"새로 만듦 **{len(res.created)}** · 이미 있음 **{len(res.existed)}** · "
+                             f"로고 없음 **{len(res.skipped)}** · 실패 **{len(res.failed)}**"),
+                color=COLOR_OK,
+            )
+            if res.failed:
+                lines = [f"`{t}` — {why}" for t, why in res.failed[:10]]
+                embed.add_field(name="실패한 팀", value="\n".join(lines)[:1024], inline=False)
+            sample = " ".join(e for _, e in (res.created + res.existed)[:12])
+            if sample:
+                embed.add_field(name="미리보기", value=sample[:1024], inline=False)
+            embed.set_footer(text="목록 파일의 `<:이름:번호>` 형식을 메시지에 쓰면 이모지로 보여요")
+            lines = [f"{e}  {n}" for n, e in sorted(res.created + res.existed)]
+            try:
+                await interaction.edit_original_response(
+                    embed=embed,
+                    attachments=[discord.File(io.BytesIO("\n".join(lines).encode("utf-8")), filename="team_emojis.txt")] if lines else [],
+                )
+            except discord.HTTPException:
+                log.info("이모지 결과 메시지를 수정하지 못했습니다 (15분 경과 등)")
+
+        task = asyncio.create_task(run())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
 
     @app_commands.command(name="경기갱신", description="VLR.gg에서 진행 중·예정 경기와 최근 결과를 다시 가져옵니다.")
     @app_commands.checks.cooldown(1, 30)

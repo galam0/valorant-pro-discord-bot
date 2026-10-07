@@ -388,6 +388,32 @@ class LogoLightenTest(unittest.TestCase):
         self.assertEqual(lighten_dark_logo(self._logo((250, 250, 250, 255))).getpixel((30, 30))[:3], (250, 250, 250))
 
 
+class EmojiTest(unittest.TestCase):
+    def test_names(self):
+        from bot.services.emoji_service import emoji_name
+
+        self.assertEqual(emoji_name("Gen.G"), "team_gen_g")
+        self.assertEqual(emoji_name("T1"), "team_t1")
+        self.assertEqual(emoji_name("KRÜ Esports"), "team_kr_esports")
+        n = emoji_name("A Very Long Team Name That Keeps Going On And On")
+        self.assertLessEqual(len(n), 32)
+        self.assertRegex(n, r"^[0-9a-z_]{2,32}$")
+
+    def test_prepare_png(self):
+        from io import BytesIO
+
+        from PIL import Image
+
+        from bot.services.emoji_service import SIZE, prepare_png
+
+        png = prepare_png(Image.new("RGBA", (300, 100), (255, 0, 0, 255)))
+        out = Image.open(BytesIO(png))
+        self.assertEqual(out.size, (SIZE, SIZE))
+        self.assertLess(len(png), 256 * 1024)
+        self.assertEqual(out.getpixel((SIZE // 2, SIZE // 2)), (255, 0, 0, 255))
+        self.assertEqual(out.getpixel((SIZE // 2, 2))[3], 0)  # 위아래 여백은 투명
+
+
 class CommandStructureTest(unittest.TestCase):
     def test_commands_are_class_methods(self):
         """명령어 함수가 setup() 안에 잘못 들어가면(들여쓰기 실수) 봇이 시작 때 죽는다."""
