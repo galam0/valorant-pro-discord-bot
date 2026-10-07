@@ -201,6 +201,9 @@ class Match(TimestampMixin, Base):
     tournament_name: Mapped[str | None] = mapped_column(String(200))
     stage: Mapped[str | None] = mapped_column(String(120))        # 예: Playoffs – Upper Final
     vlr_url: Mapped[str | None] = mapped_column(Text)
+    # 경기 상세(맵별 점수·선수 스탯) 캐시. 화면 표시용이라 JSON 통째로 보관한다.
+    detail: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    detail_scraped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     tournament: Mapped[Tournament | None] = relationship(back_populates="matches")
     team1: Mapped[Team | None] = relationship(foreign_keys=[team1_id])

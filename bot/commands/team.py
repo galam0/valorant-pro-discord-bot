@@ -12,6 +12,7 @@ from bot.database.database import db
 from bot.embeds.common import error_embed
 from bot.embeds.team import team_embed
 from bot.services import team_service
+from bot.views.team import TeamView
 
 log = logging.getLogger("valobot.cmd.team")
 
@@ -44,7 +45,7 @@ class TeamCommands(commands.Cog):
             await interaction.followup.send(embed=error_embed(msg))
             return
 
-        await interaction.followup.send(embed=team_embed(detail))
+        await interaction.followup.send(embed=team_embed(detail), view=TeamView(detail))
 
 
 async def setup(bot: commands.Bot) -> None:

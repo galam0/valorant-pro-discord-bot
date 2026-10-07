@@ -19,6 +19,7 @@ VLR.gg는 공개 API가 없으므로 HTML을 파싱한다. 선택자는 2026-10 
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
@@ -489,6 +490,215 @@ def parse_match_page(html: str, vlr_id: int) -> MatchDetail:
 
 
 # ---------------------------------------------------------------------------
+# 경기 상세 (맵별 점수 + 선수 스탯)
+# ---------------------------------------------------------------------------
+# 확인한 구조 (2026-10)
+#   .match-header-vs-note          'live' / 'final' / 'Bo3' ...
+#   .vm-stats-gamesnav-item        data-game-id, 텍스트 '1 Lotus', mod-live / mod-disabled(미진행)
+#   .vm-stats-game[data-game-id]   맵별 블록 ('all' = 전체 합산)
+#     .vm-stats-game-header .score (mod-win), .map-name (+ span.picked mod-1|mod-2), .map-duration
+#     .ovw-table (팀당 1개) > .ovw-row (mod-head 제외 = 선수)
+#       .ovw-player-name, a[href=/player/{id}], .flag, .mod-agents img[title]
+#       [data-col=rating2|acs|kd-diff|kast|adr|hsp|fb|fd] .side.mod-both
+#       .ovw-kda-stat[data-col=kills|deaths|assists] .side.mod-both
+
+
+@dataclass
+class PlayerStatLine:
+    name: str
+    vlr_id: int | None
+    country_code: str | None
+    agents: list[str]
+    rating: str | None
+    acs: str | None
+    kills: str | None
+    deaths: str | None
+    assists: str | None
+    kd_diff: str | None
+    kast: str | None
+    adr: str | None
+    hs: str | None
+    fk: str | None
+    fd: str | None
+
+
+@dataclass
+class MapResult:
+    game_id: str
+    order: int
+    name: str
+    status: str                   # live / done / upcoming
+    team1_score: int | None
+    team2_score: int | None
+    picked_by: int | None         # 1 / 2 / None(디사이더)
+    duration: str | None
+
+
+@dataclass
+class MatchFull:
+    vlr_id: int
+    status: str                   # live / completed / upcoming
+    team1_score: int | None
+    team2_score: int | None
+    best_of: str | None
+    detail: MatchDetail
+    maps: list[MapResult] = field(default_factory=list)
+    # game_id('all' 포함) → [팀1 선수들, 팀2 선수들]
+    stats: dict[str, list[list[PlayerStatLine]]] = field(default_factory=dict)
+
+
+def _side_value(cell: Tag | None) -> str | None:
+    if cell is None:
+        return None
+    both = cell.select_one(".side.mod-both")
+    value = _text(both if both is not None else cell).replace("\xa0", "").strip()
+    return value or None
+
+
+def _parse_ovw_table(table: Tag) -> list[PlayerStatLine]:
+    players: list[PlayerStatLine] = []
+    for row in table.select(".ovw-row"):
+        if "mod-head" in row.get("class", []):
+            continue
+        name_el = row.select_one(".ovw-player-name")
+        if name_el is None:
+            continue
+        link = row.select_one(".ovw-player a")
+
+        def col(name: str) -> str | None:
+            return _side_value(row.select_one(f'[data-col="{name}"]'))
+
+        players.append(
+            PlayerStatLine(
+                name=_text(name_el),
+                vlr_id=_id_from(r"/player/(\d+)", link.get("href") if link else None),
+                country_code=_flag_code(row.select_one(".ovw-player")),
+                agents=[img.get("title") or img.get("alt") or "" for img in row.select(".mod-agents img")],
+                rating=col("rating2") or col("rating"),
+                acs=col("acs"),
+                kills=col("kills"),
+                deaths=col("deaths"),
+                assists=col("assists"),
+                kd_diff=col("kd-diff"),
+                kast=col("kast"),
+                adr=col("adr"),
+                hs=col("hsp"),
+                fk=col("fb"),
+                fd=col("fd"),
+            )
+        )
+    return players
+
+
+def _parse_legacy_table(table: Tag) -> list[PlayerStatLine]:
+    """예전 경기 페이지 형식(table.wf-table-inset) 대비용."""
+    players: list[PlayerStatLine] = []
+    for row in table.select("tbody tr"):
+        cells = row.find_all("td", recursive=False)
+        name_el = row.select_one(".mod-player .text-of")
+        if name_el is None or len(cells) < 13:
+            continue
+        vals = [_side_value(c) for c in cells]
+        link = row.select_one(".mod-player a")
+        players.append(
+            PlayerStatLine(
+                name=_text(name_el),
+                vlr_id=_id_from(r"/player/(\d+)", link.get("href") if link else None),
+                country_code=_flag_code(row.select_one(".mod-player")),
+                agents=[img.get("title") or img.get("alt") or "" for img in cells[1].select("img")],
+                rating=vals[2], acs=vals[3], kills=vals[4], deaths=vals[5], assists=vals[6],
+                kd_diff=vals[7], kast=vals[8], adr=vals[9], hs=vals[10], fk=vals[11], fd=vals[12],
+            )
+        )
+    return players
+
+
+def parse_match_full(html: str, vlr_id: int) -> MatchFull:
+    soup = _soup(html)
+    detail = parse_match_page(html, vlr_id)
+
+    # --- 경기 상태 / 세트 스코어 ---
+    notes = [_text(n).lower() for n in soup.select(".match-header-vs-note")]
+    if any(n == "live" for n in notes):
+        status = "live"
+    elif any(n == "final" for n in notes):
+        status = "completed"
+    else:
+        status = "upcoming"
+    best_of = next((n.upper() for n in notes if n.startswith("bo")), None)
+    score_spans = [s for s in soup.select(".match-header-vs-score .sp-hide span") if "colon" not in " ".join(s.get("class", []))]
+    s1 = _int_or_none(_text(score_spans[0])) if len(score_spans) >= 2 else None
+    s2 = _int_or_none(_text(score_spans[1])) if len(score_spans) >= 2 else None
+
+    # --- 맵 목록 (순서·진행 여부는 상단 탭에서) ---
+    nav: dict[str, tuple[int, str, str]] = {}  # game_id → (순서, 이름, 상태)
+    for item in soup.select(".vm-stats-gamesnav-item"):
+        gid = item.get("data-game-id")
+        if not gid or gid == "all":
+            continue
+        classes = item.get("class", [])
+        m = re.match(r"(\d+)\s*(.*)", _text(item))
+        order, name = (int(m.group(1)), m.group(2)) if m else (len(nav) + 1, _text(item))
+        if "mod-live" in classes:
+            map_status = "live"
+        elif "mod-disabled" in classes or item.get("data-disabled") == "1":
+            map_status = "upcoming"
+        else:
+            map_status = "done"
+        nav[gid] = (order, name, map_status)
+
+    maps: list[MapResult] = []
+    stats: dict[str, list[list[PlayerStatLine]]] = {}
+    for game in soup.select(".vm-stats-game"):
+        gid = game.get("data-game-id")
+        if not gid:
+            continue
+
+        tables = game.select(".ovw-table")
+        teams_stats = [_parse_ovw_table(t) for t in tables[:2]]
+        if not tables:
+            teams_stats = [_parse_legacy_table(t) for t in game.select("table.wf-table-inset")[:2]]
+        if len(teams_stats) == 2 and (teams_stats[0] or teams_stats[1]):
+            stats[gid] = teams_stats
+
+        if gid == "all":
+            continue
+        header = game.select_one(".vm-stats-game-header")
+        scores = [_int_or_none(_text(s)) for s in header.select(".score")] if header else []
+        name_el = game.select_one(".map-name span") or game.select_one(".map-name")
+        picked = game.select_one(".map-name .picked")
+        picked_by = None
+        if picked is not None:
+            picked_by = 1 if "mod-1" in picked.get("class", []) else 2 if "mod-2" in picked.get("class", []) else None
+        order, nav_name, map_status = nav.get(gid, (len(maps) + 1, "", "done"))
+        if map_status == "done" and scores[:2] == [0, 0] and not stats.get(gid):
+            map_status = "upcoming"
+        maps.append(
+            MapResult(
+                game_id=gid,
+                order=order,
+                name=_own_text(name_el) or nav_name or "?",
+                status=map_status,
+                team1_score=scores[0] if len(scores) >= 2 else None,
+                team2_score=scores[1] if len(scores) >= 2 else None,
+                picked_by=picked_by,
+                duration=_text(game.select_one(".map-duration")) or None,
+            )
+        )
+    # 탭에만 있고 블록이 없는 미진행 맵 (예: 2:0으로 끝나서 안 한 3세트)
+    known = {m.game_id for m in maps}
+    for gid, (order, name, map_status) in nav.items():
+        if gid not in known:
+            maps.append(MapResult(gid, order, name, "upcoming", None, None, None, None))
+    maps.sort(key=lambda m: m.order)
+
+    return MatchFull(
+        vlr_id=vlr_id, status=status, team1_score=s1, team2_score=s2,
+        best_of=best_of, detail=detail, maps=maps, stats=stats,
+    )
+
+
+# ---------------------------------------------------------------------------
 # 스크래퍼 (네트워크 + 시간대 보정)
 # ---------------------------------------------------------------------------
 
@@ -511,12 +721,18 @@ class VlrScraper:
         return parse_search_teams(html)
 
     async def fetch_team(self, vlr_id: int) -> TeamPage:
-        page = parse_team_page(await self._get(f"/team/{vlr_id}"), vlr_id)
+        html = await self._get(f"/team/{vlr_id}")
+        page = await asyncio.to_thread(parse_team_page, html, vlr_id)
         await self._apply_offset(page.upcoming + page.recent)
         return page
 
     async def fetch_match(self, vlr_id: int) -> MatchDetail:
         return parse_match_page(await self._get(f"/{vlr_id}"), vlr_id)
+
+    async def fetch_match_full(self, vlr_id: int) -> MatchFull:
+        html = await self._get(f"/{vlr_id}")
+        # 경기 페이지는 400KB 정도라 파싱에 시간이 걸린다 → 별도 스레드에서 (봇이 멈추지 않게)
+        return await asyncio.to_thread(parse_match_full, html, vlr_id)
 
     async def fetch_upcoming_matches(self) -> list[MatchListItem]:
         items = parse_matches_list(await self._get("/matches"))

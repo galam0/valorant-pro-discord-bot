@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -28,7 +28,7 @@ from bot.database.models import (
     TeamMember,
     Tournament,
 )
-from bot.scrapers.vlr import EventRef, MatchListItem, TeamMatchItem, TeamPage
+from bot.scrapers.vlr import EventRef, MatchFull, MatchListItem, TeamMatchItem, TeamPage
 
 # /관리 상태 에 보여줄 테이블과 한국어 이름
 COUNTED_TABLES: tuple[tuple[str, type], ...] = (
@@ -306,6 +306,112 @@ async def upsert_match_list(session: AsyncSession, items: list[MatchListItem]) -
         )
     await session.flush()
     return len(items)
+
+
+def match_full_to_json(full: MatchFull) -> dict[str, Any]:
+    """경기 상세 → JSON (matches.detail). 화면 표시에 필요한 값만 담는다."""
+    d = full.detail
+
+    def team(ref: Any) -> dict[str, Any] | None:
+        return {"vlr_id": ref.vlr_id, "name": ref.name, "logo": ref.logo_url} if ref else None
+
+    return {
+        "status": full.status,
+        "team1_score": full.team1_score,
+        "team2_score": full.team2_score,
+        "best_of": full.best_of,
+        "team1": team(d.team1),
+        "team2": team(d.team2),
+        "event": {"name": d.event.name, "stage": d.event.stage, "logo": d.event.logo_url} if d.event else None,
+        "maps": [asdict(m) for m in full.maps],
+        "stats": {gid: [[asdict(p) for p in side] for side in sides] for gid, sides in full.stats.items()},
+    }
+
+
+async def save_match_full(session: AsyncSession, full: MatchFull, url: str | None = None) -> Match:
+    """경기 상세를 저장(없으면 경기 행도 생성)하고 Match 를 돌려준다."""
+    d = full.detail
+    now = utcnow()
+
+    tournament_id = await upsert_tournament(session, d.event) if d.event else None
+    team_vlr_ids = [t.vlr_id for t in (d.team1, d.team2) if t and t.vlr_id]
+    team_ids: dict[int, int] = {}
+    if team_vlr_ids:
+        rows = await session.execute(select(Team.vlr_id, Team.id).where(Team.vlr_id.in_(team_vlr_ids)))
+        team_ids = dict(rows.all())
+
+    values: dict[str, Any] = dict(
+        vlr_id=full.vlr_id,
+        team1_name=d.team1.name if d.team1 else "TBD",
+        team2_name=d.team2.name if d.team2 else "TBD",
+        team1_id=team_ids.get(d.team1.vlr_id) if d.team1 and d.team1.vlr_id else None,
+        team2_id=team_ids.get(d.team2.vlr_id) if d.team2 and d.team2.vlr_id else None,
+        team1_score=full.team1_score,
+        team2_score=full.team2_score,
+        status=full.status,
+        scheduled_at=d.scheduled_at,
+        tournament_id=tournament_id,
+        tournament_name=d.event.name if d.event else None,
+        stage=d.event.stage if d.event else None,
+        vlr_url=url or f"https://www.vlr.gg/{full.vlr_id}",
+        detail=match_full_to_json(full),
+        detail_scraped_at=now,
+    )
+    stmt = pg_insert(Match).values(**values)
+    ex = stmt.excluded
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[Match.vlr_id],
+        set_={
+            "team1_name": ex.team1_name,
+            "team2_name": ex.team2_name,
+            "team1_id": func.coalesce(ex.team1_id, Match.team1_id),
+            "team2_id": func.coalesce(ex.team2_id, Match.team2_id),
+            "team1_score": func.coalesce(ex.team1_score, Match.team1_score),
+            "team2_score": func.coalesce(ex.team2_score, Match.team2_score),
+            "status": ex.status,
+            "scheduled_at": func.coalesce(ex.scheduled_at, Match.scheduled_at),
+            "tournament_id": func.coalesce(ex.tournament_id, Match.tournament_id),
+            "tournament_name": func.coalesce(ex.tournament_name, Match.tournament_name),
+            "stage": func.coalesce(ex.stage, Match.stage),
+            # 목록에서 저장한 전체 URL(슬러그 포함)이 있으면 유지
+            "vlr_url": func.coalesce(Match.vlr_url, ex.vlr_url),
+            "detail": ex.detail,
+            "detail_scraped_at": ex.detail_scraped_at,
+            "updated_at": now,
+        },
+    ).returning(Match.id)
+    match_id = (await session.execute(stmt)).scalar_one()
+    await session.flush()
+    match = await session.get(Match, match_id, populate_existing=True)
+    assert match is not None
+    return match
+
+
+async def get_match_by_vlr_id(session: AsyncSession, vlr_id: int) -> Match | None:
+    result = await session.execute(select(Match).where(Match.vlr_id == vlr_id))
+    return result.scalar_one_or_none()
+
+
+async def get_team_matches(session: AsyncSession, team_id: int, limit: int = 10) -> list[Match]:
+    """팀의 경기: 진행 중 → 예정(가까운 순) → 최근 종료(최신 순)."""
+    involves = or_(Match.team1_id == team_id, Match.team2_id == team_id)
+    live_upcoming = (
+        await session.execute(
+            select(Match)
+            .where(involves, Match.status.in_(("live", "upcoming")))
+            .order_by(case((Match.status == "live", 0), else_=1), Match.scheduled_at.asc().nulls_last())
+            .limit(limit)
+        )
+    ).scalars().all()
+    done = (
+        await session.execute(
+            select(Match)
+            .where(involves, Match.status == "completed")
+            .order_by(Match.scheduled_at.desc().nulls_last())
+            .limit(limit)
+        )
+    ).scalars().all()
+    return list(live_upcoming) + list(done)
 
 
 async def upsert_tournament(session: AsyncSession, event: EventRef) -> int:
