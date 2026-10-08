@@ -103,12 +103,12 @@ async def apply_results() -> int:
     async with db.session() as s:
         await stocks.ensure_stocks(s, sm.STOCKS)
         prices = await stocks.get_prices(s)
-        matches = await stocks.recent_completed_matches(s, [d.vlr_id for d in sm.STOCKS], since)
-        for match_id, v1, v2, sc1, sc2 in matches:
+        matches = await stocks.recent_completed_matches(s, list(sm.BY_NAME), since)
+        for match_id, n1, n2, sc1, sc2 in matches:
             if sc1 == sc2:
                 continue
-            win_v, lose_v, ws, ls = (v1, v2, sc1, sc2) if sc1 > sc2 else (v2, v1, sc2, sc1)
-            w, l = sm.BY_VLR.get(win_v), sm.BY_VLR.get(lose_v)
+            win_n, lose_n, ws, ls = (n1, n2, sc1, sc2) if sc1 > sc2 else (n2, n1, sc2, sc1)
+            w, l = sm.BY_NAME.get(win_n.lower()), sm.BY_NAME.get(lose_n.lower())
             # 상대 팀이 종목이 아니어도, 그 팀의 기준가를 몰라 '이변' 판정은 못 하니 기본 상승률만 쓴다.
             w_price = prices.get(w.symbol) if w else None
             l_price = prices.get(l.symbol) if l else None

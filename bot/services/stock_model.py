@@ -19,19 +19,20 @@ class StockDef:
     name: str        # 표시 이름
     vlr_id: int      # VLR 팀 ID — 경기 결과를 이 팀에 연결
     base: int        # 시작가이자 평균 회귀의 기준가 (VP)
+    names: tuple[str, ...] = ()   # VLR 경기 목록에 나오는 팀 이름들 (소문자 비교)
 
 
 # 인기 6개 팀 (코드 한 줄로 바꿀 수 있다)
 STOCKS: tuple[StockDef, ...] = (
-    StockDef("GEN", "젠지 (Gen.G)", 17, 300),
-    StockDef("T1", "티원 (T1)", 14, 260),
-    StockDef("PRX", "페이퍼 렉스 (Paper Rex)", 624, 220),
-    StockDef("SEN", "센티넬즈 (Sentinels)", 2, 200),
-    StockDef("FNC", "피나틱 (FNATIC)", 2593, 160),
-    StockDef("NS", "농심 레드포스 (Nongshim)", 11060, 140),
+    StockDef("GEN", "젠지 (Gen.G)", 17, 300, ("gen.g",)),
+    StockDef("T1", "티원 (T1)", 14, 260, ("t1",)),
+    StockDef("PRX", "페이퍼 렉스 (Paper Rex)", 624, 220, ("paper rex",)),
+    StockDef("VL", "바렐 (VARREL)", 11229, 200, ("varrel",)),
+    StockDef("KRX", "키움 DRX (KIWOOM DRX)", 8185, 160, ("kiwoom drx", "drx")),
+    StockDef("NS", "농심 레드포스 (Nongshim)", 11060, 140, ("nongshim redforce",)),
 )
 BY_SYMBOL = {s.symbol: s for s in STOCKS}
-BY_VLR = {s.vlr_id: s for s in STOCKS}
+BY_NAME = {n: s for s in STOCKS for n in s.names}
 
 FEE_PCT = 1
 MIN_QTY, MAX_QTY = 1, 500

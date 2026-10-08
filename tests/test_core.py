@@ -728,6 +728,8 @@ class StockModelTest(unittest.TestCase):
         self.assertEqual(len(sm.STOCKS), 6)
         self.assertEqual(len({d.symbol for d in sm.STOCKS}), 6)
         self.assertEqual(len({d.vlr_id for d in sm.STOCKS}), 6)
+        self.assertEqual(sm.BY_NAME["varrel"].symbol, "VL")
+        self.assertEqual(sm.BY_NAME["kiwoom drx"].symbol, "KRX")
 
     def test_fee_and_totals(self):
         from bot.services import stock_model as sm

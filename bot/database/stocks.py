@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.database import economy
-from bot.database.models import Match, Stock, StockEvent, StockHistory, StockHolding, Team
+from bot.database.models import Match, Stock, StockEvent, StockHistory, StockHolding
 
 
 class NotEnoughShares(Exception):
@@ -117,17 +117,16 @@ async def claim_event(session: AsyncSession, match_id: int, symbol: str) -> bool
     return row is not None
 
 
-async def recent_completed_matches(session: AsyncSession, vlr_ids: list[int], since: datetime) -> list[tuple]:
-    """최근 끝난 경기 중 해당 팀이 포함된 것: (match.id, team1 vlr, team2 vlr, score1, score2)."""
-    from sqlalchemy.orm import aliased
+async def recent_completed_matches(session: AsyncSession, names: list[str], since: datetime) -> list[tuple]:
+    """최근 끝난 경기 중 해당 팀(이름)이 포함된 것: (match.id, team1 이름, team2 이름, score1, score2).
 
-    t1, t2 = aliased(Team), aliased(Team)
+    팀이 DB의 teams 에 없어도 경기에는 팀 이름이 저장돼 있어서 이름으로 찾는다.
+    """
     rows = await session.execute(
-        select(Match.id, t1.vlr_id, t2.vlr_id, Match.team1_score, Match.team2_score)
-        .join(t1, Match.team1_id == t1.id).join(t2, Match.team2_id == t2.id)
+        select(Match.id, Match.team1_name, Match.team2_name, Match.team1_score, Match.team2_score)
         .where(Match.status == "completed", Match.scheduled_at >= since,
                Match.team1_score.is_not(None), Match.team2_score.is_not(None),
-               (t1.vlr_id.in_(vlr_ids)) | (t2.vlr_id.in_(vlr_ids)))
+               (func.lower(Match.team1_name).in_(names)) | (func.lower(Match.team2_name).in_(names)))
         .order_by(Match.scheduled_at.asc())
     )
     return [tuple(r) for r in rows.all()]
