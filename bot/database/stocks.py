@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.database import economy
-from bot.database.models import Match, Stock, StockEvent, StockHistory, StockHolding
+from bot.database.models import Match, Stock, StockEvent, StockHistory, StockHolding, Team
 
 
 class NotEnoughShares(Exception):
@@ -130,3 +130,9 @@ async def recent_completed_matches(session: AsyncSession, names: list[str], sinc
         .order_by(Match.scheduled_at.asc())
     )
     return [tuple(r) for r in rows.all()]
+
+
+async def team_logos(session: AsyncSession, vlr_ids: list[int]) -> dict[int, str]:
+    """DB에 저장된 팀 로고 URL (VLR 팀 ID → URL)."""
+    rows = await session.execute(select(Team.vlr_id, Team.logo_url).where(Team.vlr_id.in_(vlr_ids), Team.logo_url.is_not(None)))
+    return {int(v): u for v, u in rows.all()}

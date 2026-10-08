@@ -31,16 +31,40 @@ def _check_qty(qty: int) -> None:
         raise StockError(f"한 번에 {sm.MIN_QTY}~{sm.MAX_QTY}주까지 거래할 수 있어요.")
 
 
+_logo_cache: dict[int, str | None] = {}    # DB에 없는 팀의 로고 (VLR 팀 페이지에서 한 번만 가져온다)
+
+
+async def _logo_urls(db_logos: dict[int, str]) -> dict[int, str | None]:
+    out: dict[int, str | None] = {}
+    for d in sm.STOCKS:
+        if d.vlr_id in db_logos:
+            out[d.vlr_id] = db_logos[d.vlr_id]
+            continue
+        if d.vlr_id not in _logo_cache:
+            try:
+                from bot.scrapers.vlr import vlr
+                _logo_cache[d.vlr_id] = (await vlr.fetch_team(d.vlr_id)).logo_url
+            except Exception as exc:     # 로고를 못 가져와도 시세판은 보여준다 (코드 배지로 대체)
+                log.info("[주식] %s 로고 가져오기 실패: %s: %s", d.symbol, type(exc).__name__, exc)
+                continue            # 실패는 캐시하지 않아 다음에 다시 시도
+        out[d.vlr_id] = _logo_cache.get(d.vlr_id)
+    return out
+
+
 async def board() -> list[Quote]:
     async with db.session() as s:
         await stocks.ensure_stocks(s, sm.STOCKS)
         await s.commit()
         prices = await stocks.get_prices(s)
+        db_logos = await stocks.team_logos(s, [d.vlr_id for d in sm.STOCKS])
         out = []
         for d in sm.STOCKS:
             p = prices.get(d.symbol, d.base)
             out.append(Quote(d.symbol, d.name, p, sm.pct_change(p, await stocks.price_before(s, d.symbol)),
                              await stocks.recent_prices(s, d.symbol)))
+    logos = await _logo_urls(db_logos)
+    for q, d in zip(out, sm.STOCKS):
+        q.logo_url = logos.get(d.vlr_id)
     return out
 
 

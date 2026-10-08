@@ -6,7 +6,7 @@ from io import BytesIO
 
 from PIL import Image, ImageDraw
 
-from bot.render.base import fit_text, font
+from bot.render.base import fit_text, font, paste_logo
 
 W = 800
 ROW_H = 74
@@ -29,8 +29,9 @@ def _spark(d: ImageDraw.ImageDraw, box: tuple[int, int, int, int], values: list[
     d.ellipse([pts[-1][0] - 4, pts[-1][1] - 4, pts[-1][0] + 4, pts[-1][1] + 4], fill=color)
 
 
-def render_stock_board(quotes: list) -> bytes:
-    """quotes: Quote(symbol, name, price, change_pct, spark) 목록."""
+def render_stock_board(quotes: list, logos: dict | None = None) -> bytes:
+    """quotes: Quote(...) 목록. logos: {종목 코드: PIL 이미지} — 없으면 코드 배지."""
+    logos = logos or {}
     h = TOP + ROW_H * len(quotes) + 26
     img = Image.new("RGB", (W, h), BG)
     d = ImageDraw.Draw(img)
@@ -42,10 +43,14 @@ def render_stock_board(quotes: list) -> bytes:
     for i, q in enumerate(quotes):
         y = TOP + ROW_H * i
         d.rounded_rectangle([34, y, W - 34, y + ROW_H - 10], radius=18, fill=CARD)
-        d.rounded_rectangle([48, y + 16, 118, y + 46], radius=15, fill=ACCENT)
-        d.text((83, y + 31), q.symbol, font=font("heavy", 18), fill=NAVY, anchor="mm")
-        name, nf = fit_text(d, q.name, "bold", 20, 230, 14)
-        d.text((136, y + 31), name, font=nf, fill=WHITE, anchor="lm")
+        d.ellipse([46, y + 3, 46 + 52, y + 3 + 52], fill=(44, 58, 80))     # 로고 받침 (어두운 로고는 paste_logo 가 흰색으로 바꿔준다)
+        if logos.get(q.symbol) is not None:
+            paste_logo(img, logos[q.symbol], (72, y + 29), 42)
+        else:
+            d.text((72, y + 29), q.symbol, font=font("heavy", 16), fill=WHITE, anchor="mm")
+        name, nf = fit_text(d, q.name, "bold", 20, 250, 14)
+        d.text((116, y + 21), name, font=nf, fill=WHITE, anchor="lm")
+        d.text((116, y + 45), q.symbol, font=font("bold", 14), fill=DIM, anchor="lm")
         ch = q.change_pct
         color = FLAT if ch is None or abs(ch) < 0.05 else (UP if ch > 0 else DOWN)
         arrow = "–" if color == FLAT else ("▲" if ch > 0 else "▼")

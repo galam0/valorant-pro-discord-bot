@@ -103,6 +103,7 @@ class Quote:
     price: int
     change_pct: float | None     # 24시간 전 대비
     spark: list[int]
+    logo_url: str | None = None
 
 
 @dataclass

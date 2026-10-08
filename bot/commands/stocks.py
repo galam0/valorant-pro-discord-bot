@@ -13,6 +13,7 @@ from discord.ext import commands
 
 from bot.database.database import db
 from bot.embeds.common import COLOR_INFO, COLOR_MAIN, COLOR_OK, error_embed
+from bot.render import images
 from bot.render.base import render_enabled
 from bot.render.stock_card import render_stock_board
 from bot.services import guild_settings
@@ -95,7 +96,8 @@ class StockCommands(commands.Cog):
         embed = board_embed(quotes)
         if render_enabled():
             try:
-                png = await asyncio.to_thread(render_stock_board, quotes)
+                fetched = await images.fetch_many({q.symbol: q.logo_url for q in quotes})
+                png = await asyncio.to_thread(render_stock_board, quotes, fetched)
                 await interaction.followup.send(file=discord.File(BytesIO(png), filename="stocks.png"))
                 return
             except Exception:
