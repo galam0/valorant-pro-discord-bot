@@ -14,6 +14,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.services import guild_settings
 from bot.database.database import db
 from bot.embeds.common import COLOR_INFO, COLOR_MAIN, COLOR_OK, COLOR_WARN, error_embed
 from bot.render import game_anim, images
@@ -259,6 +260,9 @@ class QuizView(discord.ui.View):
 class GameCommands(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return await guild_settings.check_game_channel(interaction)
 
     async def _guard(self, interaction: discord.Interaction) -> bool:
         if not db.configured:

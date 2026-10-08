@@ -6,6 +6,7 @@ import discord
 
 from bot.embeds.common import COLOR_INFO, COLOR_MAIN, COLOR_OK, COLOR_WARN, ts
 from bot.services import odds_model as om
+from bot.services.odds_model import CANCEL_FEE_PCT
 from bot.services.economy_service import fmt
 
 KIND_KO = {"winner": "승패", "score": "맵 스코어", "mvp": "MVP"}
@@ -46,7 +47,7 @@ def market_embed(m, mine: list, state: str) -> discord.Embed:
     if mine:
         embed.add_field(name="내 예측", value=prediction_lines(mine), inline=False)
     if state == "open":
-        embed.set_footer(text=f"{om.MIN_STAKE:,}~{om.MAX_STAKE:,} VP · 시작 {om.LOCK_MINUTES}분 전까지 걸 수 있고, 그 전엔 취소 가능해요")
+        embed.set_footer(text=f"{om.MIN_STAKE:,}~{om.MAX_STAKE:,} VP · 시작 {om.LOCK_MINUTES}분 전까지 걸 수 있어요 · 직접 취소하면 수수료 {CANCEL_FEE_PCT}%")
     else:
         embed.colour = COLOR_WARN
         embed.add_field(name="⛔ 마감", value=("이미 경기가 시작되었어요." if state == "started" else "예측이 마감되었어요."), inline=False)
@@ -76,4 +77,48 @@ def my_predictions_embed(preds: list) -> discord.Embed:
         m = p.match
         lines.append(f"**{m.team1_name} vs {m.team2_name}**\n{prediction_lines([p])}")
     embed.description = "\n\n".join(lines)[:4000]
+    return embed
+
+
+def others_predictions_embed(match, preds: list) -> discord.Embed:
+    """서버 사람들의 예측 현황. 승패는 팀별 인원수도 보여준다."""
+    embed = discord.Embed(title=f"👥 {match.team1_name} vs {match.team2_name} 예측 현황", color=COLOR_MAIN)
+    if match.tournament_name:
+        embed.description = match.tournament_name
+    if not preds:
+        embed.add_field(name="예측", value="아직 아무도 예측하지 않았어요.", inline=False)
+        return embed
+    winners = [p for p in preds if p.kind == "winner"]
+    if winners:
+        n1 = sum(1 for p in winners if p.pick == "1")
+        n2 = len(winners) - n1
+        embed.add_field(name="승패 예측 비율", value=f"**{match.team1_name}** {n1}명  vs  {n2}명 **{match.team2_name}**", inline=False)
+    for kind in ("winner", "score", "mvp"):
+        rows = [p for p in preds if p.kind == kind]
+        if not rows:
+            continue
+        lines = []
+        for p in rows[:12]:
+            extra = f" → +{p.payout:,}" if p.status == "won" else (" → 환불" if p.status == "void" else "")
+            lines.append(f"{STATUS_KO.get(p.status, p.status)} <@{p.user_id}> · {p.pick_label} · {p.stake:,} VP ×{p.odds:.2f}{extra}")
+        if len(rows) > 12:
+            lines.append(f"… 외 {len(rows) - 12}명")
+        embed.add_field(name=KIND_KO[kind], value="\n".join(lines)[:1024], inline=False)
+    embed.set_footer(text="건 VP가 많은 순서로 보여줘요")
+    return embed
+
+
+def settlement_embed(match_name: str, rows: list) -> discord.Embed:
+    """예측 정산 알림. rows: (경기, 서버, 유저, 결과, 종류, 선택, 건 VP, 받은 VP)."""
+    won = sorted((r for r in rows if r[3] == "won"), key=lambda r: r[7] - r[6], reverse=True)
+    lost = sum(1 for r in rows if r[3] == "lost")
+    void = sum(1 for r in rows if r[3] == "void")
+    embed = discord.Embed(title=f"🏁 {match_name} 예측 정산", color=COLOR_OK if won else COLOR_INFO)
+    embed.description = f"적중 **{len(won)}** · 실패 **{lost}**" + (f" · 환불 **{void}**" if void else "")
+    if won:
+        lines = [f"<@{r[2]}> · {KIND_KO.get(r[4], r[4])} {r[5]} · **+{r[7] - r[6]:,} VP**" for r in won[:8]]
+        if len(won) > 8:
+            lines.append(f"… 외 {len(won) - 8}명")
+        embed.add_field(name="🎉 적중자", value="\n".join(lines)[:1024], inline=False)
+    embed.set_footer(text="/내예측 에서 내 결과를 볼 수 있어요")
     return embed

@@ -572,7 +572,7 @@ class EconomyCommandsTest(unittest.TestCase):
                 for k in n.keywords:
                     if k.arg == "name":
                         names.append(k.value.value)
-        self.assertEqual(set(names), {"vp", "출석", "vp랭킹", "예측", "내예측"})
+        self.assertEqual(set(names), {"vp", "출석", "vp랭킹", "예측", "내예측", "예측현황"})
         for nm in names:
             self.assertEqual(nm, nm.lower())
         self.assertIn("bot.commands.economy", open("bot/commands/__init__.py", encoding="utf-8").read())
@@ -691,6 +691,36 @@ class ProfileShopTest(unittest.TestCase):
         for theme in THEMES:
             for frame in ["frame_none", "frame_rainbow", *FRAME_COLORS]:
                 self.assertTrue(render_profile_card(dict(base, theme=theme, frame=frame)).startswith(b"\x89PNG"))
+
+
+class CancelFeeAndChannelTest(unittest.TestCase):
+    def test_cancel_fee_is_ten_percent_floor(self):
+        from bot.services.odds_model import cancel_fee
+        self.assertEqual(cancel_fee(100), 10)
+        self.assertEqual(cancel_fee(2000), 200)
+        self.assertEqual(cancel_fee(15), 1)      # 소수점 버림
+        self.assertEqual(cancel_fee(10), 1)
+
+    def test_game_channel_restriction(self):
+        from unittest.mock import patch
+        from bot.services import guild_settings as gsx
+
+        def inter(channel_id, admin=False):
+            return NS(guild_id=1, channel_id=channel_id, user=NS(id=5, guild_permissions=NS(administrator=admin)))
+
+        class FakeRestricted(Exception):   # discord 스텁에서는 CheckFailure 가 예외 클래스가 아니라서 대체
+            def __init__(self, channel_id):
+                self.channel_id = channel_id
+
+        with patch.object(gsx, "ChannelRestricted", FakeRestricted), patch.object(gsx, "get", AsyncMock(return_value=(100, None))):
+            self.assertTrue(asyncio.run(gsx.check_game_channel(inter(100))))            # 게임 채널
+            self.assertTrue(asyncio.run(gsx.check_game_channel(inter(7, admin=True))))  # 관리자는 예외
+            with self.assertRaises(FakeRestricted) as ctx:
+                asyncio.run(gsx.check_game_channel(inter(7)))
+            self.assertEqual(ctx.exception.channel_id, 100)
+        with patch.object(gsx, "get", AsyncMock(return_value=(None, None))):            # 설정 없으면 어디서나
+            self.assertTrue(asyncio.run(gsx.check_game_channel(inter(7))))
+
 
 
 if __name__ == "__main__":

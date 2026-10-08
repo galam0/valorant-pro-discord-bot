@@ -166,3 +166,11 @@ def settle_outcome(kind: str, pick: str, *, score1: int | None, score2: int | No
             return "void"
         return "won" if norm(pick) == norm(mvp) else "lost"
     return "void"
+
+
+CANCEL_FEE_PCT = 10    # 예측을 직접 취소할 때 떼는 수수료(%)
+
+
+def cancel_fee(stake: int) -> int:
+    """직접 취소 수수료 (걸었던 VP의 10%, 소수점 버림). 경기 취소·연기로 인한 자동 환불에는 없다."""
+    return stake * CANCEL_FEE_PCT // 100

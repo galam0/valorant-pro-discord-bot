@@ -20,6 +20,7 @@
   wallets          서버별 VP 지갑 (guild_id, user_id)
   wallet_ledger    VP 입출금 기록 (잔액이 맞는지 추적용)
   predictions      경기 예측 (승패/스코어/MVP)
+  guild_settings   서버별 설정 (게임 채널·알림 채널)
 """
 
 from __future__ import annotations
@@ -399,3 +400,14 @@ class Purchase(Base):
     item_id: Mapped[str] = mapped_column(String(30), primary_key=True)
     price: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class GuildSetting(Base):
+    """서버별 봇 설정 (/채널설정)."""
+
+    __tablename__ = "guild_settings"
+
+    guild_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    game_channel_id: Mapped[int | None] = mapped_column(BigInteger)     # VP·예측·미니게임 명령어를 쓸 수 있는 채널
+    notice_channel_id: Mapped[int | None] = mapped_column(BigInteger)   # 예측 정산 결과를 알려줄 채널
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

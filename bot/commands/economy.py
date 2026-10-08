@@ -13,7 +13,8 @@ from bot.embeds.common import error_embed
 from bot.embeds.prediction import leaderboard_embed, wallet_embed
 from bot.services import economy_service as eco
 from bot.services import prediction_service as ps
-from bot.views.prediction import MatchSelectView, send_my_predictions
+from bot.services import guild_settings
+from bot.views.prediction import MatchSelectView, PredictedMatchView, send_my_predictions
 
 log = logging.getLogger("valobot.cmd.economy")
 
@@ -33,6 +34,9 @@ class CheckinView(discord.ui.View):
 class EconomyCommands(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return await guild_settings.check_game_channel(interaction)
 
     async def _guard(self, interaction: discord.Interaction) -> bool:
         if not db.configured:
@@ -79,6 +83,17 @@ class EconomyCommands(commands.Cog):
         if not await self._guard(interaction):
             return
         await send_my_predictions(interaction)
+
+    @app_commands.command(name="예측현황", description="이 서버 사람들이 건 예측을 경기별로 봅니다.")
+    async def prediction_board(self, interaction: discord.Interaction) -> None:
+        if not await self._guard(interaction):
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        rows = await ps.matches_with_predictions(interaction.guild_id)
+        if not rows:
+            await interaction.followup.send(embed=error_embed("아직 이 서버에 예측이 없어요. `/예측`으로 먼저 걸어보세요!"), ephemeral=True)
+            return
+        await interaction.followup.send("👥 예측을 볼 경기를 골라주세요.", view=PredictedMatchView(rows), ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:

@@ -11,6 +11,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.autocomplete import team_autocomplete
+from bot.services import guild_settings
 from bot.database.database import db
 from bot.embeds.common import COLOR_INFO, COLOR_MAIN, error_embed
 from bot.render import images
@@ -156,6 +157,9 @@ async def agent_autocomplete(interaction: discord.Interaction, current: str) -> 
 class ProfileCommands(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return await guild_settings.check_game_channel(interaction)
 
     async def _guard(self, interaction: discord.Interaction) -> bool:
         if not db.configured:

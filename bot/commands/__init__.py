@@ -8,6 +8,7 @@ import discord
 from discord import app_commands
 
 from bot.embeds.common import error_embed
+from bot.services import guild_settings
 
 log = logging.getLogger("valobot.commands")
 
@@ -22,6 +23,7 @@ EXTENSIONS = (
     "bot.commands.economy",
     "bot.commands.games",
     "bot.commands.profile",
+    "bot.commands.settings",
     "bot.commands.admin",
 )
 
@@ -42,6 +44,9 @@ def install_error_handler(tree: app_commands.CommandTree) -> None:
         interaction: discord.Interaction, error: app_commands.AppCommandError
     ) -> None:
         """모든 명령어 오류를 잡아 봇이 죽지 않게 하고 한국어로 안내한다."""
+        if isinstance(error, guild_settings.ChannelRestricted):
+            await _send_error(interaction, f"이 명령어는 <#{error.channel_id}> 채널에서만 쓸 수 있어요.")
+            return
         if isinstance(error, app_commands.CheckFailure):
             await _send_error(interaction, "관리자만 사용할 수 있는 명령어입니다.")
             return

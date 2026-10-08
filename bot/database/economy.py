@@ -17,7 +17,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bot.database.models import Match, Prediction, Profile, Purchase, Wallet, WalletLedger
+from bot.services.odds_model import CANCEL_FEE_PCT, cancel_fee  # noqa: F401  (재노출)
+from bot.database.models import GuildSetting, Match, Prediction, Profile, Purchase, Wallet, WalletLedger
 
 STARTING_VP = 500      # 서버에서 처음 지갑을 만들 때 받는 VP
 CHECKIN_VP = 100       # 하루 출석 보상
@@ -126,8 +127,11 @@ async def get_prediction(session: AsyncSession, prediction_id: int) -> Predictio
     return await session.get(Prediction, prediction_id)
 
 
-async def cancel_prediction(session: AsyncSession, prediction_id: int, user_id: int) -> Prediction | None:
-    """열린(open) 예측만 취소하고 전액 환불. 이미 취소·정산됐거나 남의 예측이면 None."""
+async def cancel_prediction(session: AsyncSession, prediction_id: int, user_id: int) -> tuple[Prediction, int] | None:
+    """열린(open) 예측만 취소한다. 수수료 10%를 뗀 나머지를 환불하고 (예측, 수수료)를 돌려준다.
+
+    이미 취소·정산됐거나 남의 예측이면 None. (경기 취소·연기로 인한 자동 환불은 수수료 없이 전액)
+    """
     row = (await session.execute(
         update(Prediction)
         .where(Prediction.id == prediction_id, Prediction.user_id == user_id, Prediction.status == "open")
@@ -138,8 +142,9 @@ async def cancel_prediction(session: AsyncSession, prediction_id: int, user_id: 
         return None
     pred = await session.get(Prediction, prediction_id)
     await session.refresh(pred)
-    await apply_delta(session, pred.guild_id, pred.user_id, pred.stake, "refund", ref=f"prediction:{pred.id}")
-    return pred
+    fee = cancel_fee(pred.stake)
+    await apply_delta(session, pred.guild_id, pred.user_id, pred.stake - fee, "refund", ref=f"prediction:{pred.id}")
+    return pred, fee
 
 
 async def open_predictions_for_match(session: AsyncSession, match_id: int) -> list[Prediction]:
@@ -226,3 +231,44 @@ async def prediction_record(session: AsyncSession, guild_id: int, user_id: int) 
     lost = (await session.execute(select(func.count()).select_from(Prediction).where(
         Prediction.guild_id == guild_id, Prediction.user_id == user_id, Prediction.status == "lost"))).scalar_one()
     return int(won), int(won) + int(lost)
+
+
+async def matches_with_predictions(session: AsyncSession, guild_id: int, limit: int = 25) -> list[tuple[Match, int]]:
+    """이 서버에 (취소 안 된) 예측이 있는 경기와 예측 수 — 최근 경기부터."""
+    rows = await session.execute(
+        select(Match, func.count(Prediction.id))
+        .join(Prediction, Prediction.match_id == Match.id)
+        .where(Prediction.guild_id == guild_id, Prediction.status != "cancelled")
+        .group_by(Match.id)
+        .order_by(func.coalesce(Match.scheduled_at, Match.created_at).desc())
+        .limit(limit)
+    )
+    return [(m, int(n)) for m, n in rows.all()]
+
+
+async def match_predictions(session: AsyncSession, guild_id: int, match_id: int) -> list[Prediction]:
+    rows = await session.execute(
+        select(Prediction).where(Prediction.guild_id == guild_id, Prediction.match_id == match_id,
+                                 Prediction.status != "cancelled")
+        .order_by(Prediction.stake.desc(), Prediction.id)
+    )
+    return list(rows.scalars())
+
+
+# ---------------------------------------------------------------------------
+# 서버 설정 (/채널설정)
+# ---------------------------------------------------------------------------
+
+
+async def get_guild_setting(session: AsyncSession, guild_id: int) -> GuildSetting | None:
+    return await session.get(GuildSetting, guild_id)
+
+
+async def set_guild_channel(session: AsyncSession, guild_id: int, field: str, channel_id: int | None) -> None:
+    """field: game_channel_id / notice_channel_id. channel_id=None 이면 해제."""
+    if field not in ("game_channel_id", "notice_channel_id"):
+        raise ValueError(field)
+    stmt = pg_insert(GuildSetting).values(guild_id=guild_id, **{field: channel_id})
+    stmt = stmt.on_conflict_do_update(index_elements=[GuildSetting.guild_id],
+                                      set_={field: channel_id, "updated_at": func.now()})
+    await session.execute(stmt)

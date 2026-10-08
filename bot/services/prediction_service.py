@@ -147,6 +147,16 @@ async def my_for_match(guild_id: int, user_id: int, match_id: int) -> list[Predi
         return await economy.get_user_predictions(s, guild_id, user_id, match_id)
 
 
+async def matches_with_predictions(guild_id: int) -> list:
+    async with db.session() as s:
+        return await economy.matches_with_predictions(s, guild_id)
+
+
+async def match_predictions(guild_id: int, match_id: int) -> tuple[Match | None, list[Prediction]]:
+    async with db.session() as s:
+        return await s.get(Match, match_id), await economy.match_predictions(s, guild_id, match_id)
+
+
 async def my_recent(guild_id: int, user_id: int, limit: int = 15) -> list[Prediction]:
     async with db.session() as s:
         return await economy.my_predictions(s, guild_id, user_id, limit)
@@ -179,8 +189,8 @@ async def place(*, guild_id: int, user_id: int, market: Market, kind: str, pick:
     return pred, balance
 
 
-async def cancel(*, user_id: int, prediction_id: int) -> tuple[Prediction, int]:
-    """시작 전까지 취소 가능, 전액 환불. (취소된 예측, 잔액)."""
+async def cancel(*, user_id: int, prediction_id: int) -> tuple[Prediction, int, int]:
+    """시작 전까지 취소 가능. 수수료 10%를 뗀 나머지를 환불한다. (취소된 예측, 잔액, 수수료)."""
     async with db.session() as s:
         pred = await economy.get_prediction(s, prediction_id)
         if pred is None or pred.user_id != user_id:
@@ -188,12 +198,13 @@ async def cancel(*, user_id: int, prediction_id: int) -> tuple[Prediction, int]:
         match = await s.get(Match, pred.match_id)
         if om.betting_state(datetime.now(timezone.utc), match.scheduled_at, match.status) in ("started",):
             raise BettingClosed("started")
-        cancelled = await economy.cancel_prediction(s, prediction_id, user_id)
-        if cancelled is None:
+        result = await economy.cancel_prediction(s, prediction_id, user_id)
+        if result is None:
             raise PredictionError("이미 취소되었거나 정산된 예측이에요.")
+        cancelled, fee = result
         balance = await economy.get_balance(s, cancelled.guild_id, user_id)
         await s.commit()
-    return cancelled, balance
+    return cancelled, balance, fee
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +217,8 @@ class SettleSummary:
     won: int = 0
     lost: int = 0
     void: int = 0
+    # 알림용 상세: (경기 이름, 서버, 유저, 결과, 종류, 선택, 건 VP, 받은 VP)
+    details: list = field(default_factory=list)
 
     @property
     def total(self) -> int:
@@ -226,6 +239,9 @@ async def _settle_one_match(s, match: Match) -> SettleSummary:
             outcome = "void"
         if await economy.settle_prediction(s, pred, outcome):
             setattr(summary, outcome, getattr(summary, outcome) + 1)
+            payout = {"won": int(pred.stake * pred.odds), "void": pred.stake}.get(outcome, 0)
+            summary.details.append((f"{match.team1_name} vs {match.team2_name}", pred.guild_id, pred.user_id,
+                                    outcome, pred.kind, pred.pick_label, pred.stake, payout))
     return summary
 
 
@@ -240,6 +256,7 @@ async def settle_match(vlr_id: int) -> SettleSummary:
             await s.commit()
     if summary.total:
         log.info("[예측] 정산 match %s: 적중 %d · 실패 %d · 환불 %d", vlr_id, summary.won, summary.lost, summary.void)
+        await _announce(summary.details)
     return summary
 
 
@@ -264,11 +281,33 @@ async def settle_finished() -> SettleSummary:
             total.won += part.won
             total.lost += part.lost
             total.void += part.void
+            total.details += part.details
         if total.total:
             await s.commit()
     if total.total:
         log.info("[예측] 일괄 정산: 적중 %d · 실패 %d · 환불 %d", total.won, total.lost, total.void)
+        await _announce(total.details)
     return total
+
+
+# 서버 알림 채널로 정산 결과를 보내는 함수 (main 에서 연결). 없으면 알림 없이 정산만 한다.
+announcer = None   # async (guild_id: int, embed: discord.Embed) -> None
+
+
+async def _announce(details: list) -> None:
+    """정산 결과를 (서버, 경기)별로 묶어 알림 채널에 올린다. 알림 실패가 정산을 망치지 않게 모두 삼킨다."""
+    if announcer is None or not details:
+        return
+    from bot.embeds.prediction import settlement_embed
+
+    groups: dict[tuple[int, str], list] = {}
+    for d in details:
+        groups.setdefault((d[1], d[0]), []).append(d)
+    for (guild_id, match_name), rows in groups.items():
+        try:
+            await announcer(guild_id, settlement_embed(match_name, rows))
+        except Exception as exc:
+            log.warning("[예측] 정산 알림 실패 (guild %s): %s: %s", guild_id, type(exc).__name__, exc)
 
 
 def _as_void(match: Match):

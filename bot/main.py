@@ -19,6 +19,8 @@ from bot.commands import EXTENSIONS, install_error_handler
 from bot.database.database import db
 from bot.render import images as card_images
 from bot.scrapers.http import http_client
+from bot.services import prediction_service
+from bot.services.announce import make_announcer
 from bot.utils.config import settings
 from bot.worker_bridge import bridge
 from bot.utils.logger import setup_logging
@@ -139,6 +141,7 @@ class ValorantBot(commands.Bot):
     async def setup_hook(self) -> None:
         """로그인 직후 1회 실행. 명령어(Cog)를 불러온다. (동기화는 서버 목록을 안 뒤 on_ready에서)"""
         install_error_handler(self.tree)
+        prediction_service.announcer = make_announcer(self)   # 예측 정산 결과 → 서버 알림 채널
         for ext in EXTENSIONS:
             await self.load_extension(ext)
 
