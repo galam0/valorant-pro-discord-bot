@@ -78,8 +78,9 @@ COIN_THEMES = {
     "gold": ((240, 180, 40), (190, 135, 20)),
     "teal": ((30, 200, 170), (18, 150, 128)),
     "purple": ((150, 100, 255), (110, 70, 205)),
+    "mint": ((192, 255, 238), (112, 196, 172)),   # #C0FFEE
 }
-COIN_THEME = "red"
+COIN_THEME = "mint"
 
 
 def coin_sprite(face: str, size: int = 210) -> Image.Image:
@@ -90,6 +91,10 @@ def coin_sprite(face: str, size: int = 210) -> Image.Image:
     img, d, n = _canvas(size)
     c = n / 2
     ACC, ACC_D = COIN_THEMES[COIN_THEME]
+    if COIN_THEME == "mint":   # 앞: 민트 원판+네이비 글자 / 뒤: 네이비 원판+민트 글자
+        disc_a, disc_b, ink = ((ACC, (170, 238, 216), V_NAVY) if face == "앞" else ((24, 38, 52), (15, 25, 35), ACC))
+    else:
+        disc_a, disc_b, ink = V_WHITE, V_WHITE_D, ACC
 
     def circle(r, fill=None, outline=None, width=0):
         d.ellipse([c - r, c - r, c + r, c + r], fill=fill, outline=outline, width=width)
@@ -103,8 +108,8 @@ def coin_sprite(face: str, size: int = 210) -> Image.Image:
     circle(n * 0.385, fill=V_NAVY)
     disc = Image.new("RGBA", (n, n), (0, 0, 0, 0))          # 흰 원판 (대각선으로 아주 살짝 다른 톤)
     dd = ImageDraw.Draw(disc)
-    dd.ellipse([c - n * 0.36, c - n * 0.36, c + n * 0.36, c + n * 0.36], fill=V_WHITE)
-    dd.polygon([(n * 0.12, n * 0.9), (n * 0.9, n * 0.12), (n, n * 0.12), (n, n), (0, n)], fill=V_WHITE_D)
+    dd.ellipse([c - n * 0.36, c - n * 0.36, c + n * 0.36, c + n * 0.36], fill=disc_a)
+    dd.polygon([(n * 0.12, n * 0.9), (n * 0.9, n * 0.12), (n, n * 0.12), (n, n), (0, n)], fill=disc_b)
     mask = Image.new("L", (n, n), 0)
     ImageDraw.Draw(mask).ellipse([c - n * 0.36, c - n * 0.36, c + n * 0.36, c + n * 0.36], fill=255)
     layer = Image.new("RGBA", (n, n), (0, 0, 0, 0))
@@ -112,8 +117,8 @@ def coin_sprite(face: str, size: int = 210) -> Image.Image:
     img.alpha_composite(layer)
     d = ImageDraw.Draw(img)
     d.arc([c - n * 0.43, c - n * 0.43, c + n * 0.43, c + n * 0.43], 200, 255, fill=(255, 255, 255), width=int(n * 0.022))
-    text, px = ("V", 0.56) if face == "앞" else ("VP", 0.38)
-    d.text((c, c + n * 0.02), text, font=font("heavy", int(n * px)), fill=ACC, anchor="mm")
+    text, px = ("VP", 0.38) if COIN_THEME == "mint" else (("V", 0.56) if face == "앞" else ("VP", 0.38))
+    d.text((c, c + n * 0.02), text, font=font("heavy", int(n * px)), fill=ink, anchor="mm")
     out = _down(img, size)
     _sprites[key] = out
     return out
@@ -209,7 +214,7 @@ def _coin_gif(result: str, variant: int = 0) -> bytes:
         frames.append(img)
         durs.append(60 + int(70 * t))
     final = frames[-1].copy()
-    _banner(final, f"{result}면!", V_RED)
+    _banner(final, f"{result}면!", COIN_THEMES[COIN_THEME][0])
     frames.append(final)
     durs.append(3000)
     return gif_bytes(frames, durs)
