@@ -75,7 +75,7 @@ def _draw_frame(img: Image.Image, cx: int, cy: int, r: int, frame: str) -> None:
 
 
 def render_profile_card(data: dict[str, Any], avatar: Image.Image | None = None) -> bytes:
-    """data: name, title(표시용 글자 또는 ''), theme, frame, vp, rank, pred_win, pred_total, quiz_week, quiz_limit,
+    """data: name, title(표시용 글자 또는 ''), theme, frame, vp, rank, pred_win, pred_total,
     fav_team, fav_agent"""
     theme = data.get("theme", "theme_default")
     accent = THEMES.get(theme, THEMES["theme_default"])[2]
@@ -102,9 +102,8 @@ def render_profile_card(data: dict[str, Any], avatar: Image.Image | None = None)
     d.text((x, 190), f"예측 적중률  {rate}", font=font("bold", 18), fill=(200, 208, 218), anchor="lm")
 
     cells = [("VP", f"{data['vp']:,}", (255, 214, 95)), ("서버 순위", f"{data['rank']}위", WHITE),
-             ("예측 적중", f"{data['pred_win']}/{data['pred_total']}", (120, 230, 160)),
-             ("이번 주 퀴즈", f"{data['quiz_week']}/{data.get('quiz_limit', 5)}", WHITE)]
-    cw = (W - 80) / 4
+             ("예측 적중", f"{data['pred_win']}/{data['pred_total']}", (120, 230, 160))]
+    cw = (W - 80) / 3
     for i, (label, val, col) in enumerate(cells):
         x0 = 40 + cw * i
         d.rounded_rectangle([x0 + 5, 236, x0 + cw - 5, 330], radius=18, fill=NAVY)

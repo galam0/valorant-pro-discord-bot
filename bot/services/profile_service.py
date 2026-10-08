@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from bot.database import economy
 from bot.database.database import db
-from bot.services import games_service, quiz_bank, shop_catalog
+from bot.services import shop_catalog
 from bot.services.economy_service import rank_info
 from bot.services.shop_catalog import BY_ID, DEFAULTS, FREE_IDS
 
@@ -20,14 +20,12 @@ async def card_data(guild_id: int, user_id: int, name: str) -> dict:
         prof = await economy.get_profile(s, guild_id, user_id)
         won, total = await economy.prediction_record(s, guild_id, user_id)
     rank, _ = await rank_info(guild_id, user_id)
-    left = await games_service.quiz_remaining(guild_id, user_id)
     title_id = prof.title if prof else DEFAULTS["title"]
     title = BY_ID[title_id].name if title_id in BY_ID and title_id != DEFAULTS["title"] else ""
     return {
         "name": name, "title": title,
         "theme": prof.theme if prof else DEFAULTS["theme"], "frame": prof.frame if prof else DEFAULTS["frame"],
         "vp": bal, "rank": rank, "pred_win": won, "pred_total": total,
-        "quiz_week": quiz_bank.WEEKLY_LIMIT - left, "quiz_limit": quiz_bank.WEEKLY_LIMIT,
         "fav_team": prof.fav_team if prof else None, "fav_agent": prof.fav_agent if prof else None,
     }
 
