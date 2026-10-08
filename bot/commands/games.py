@@ -294,7 +294,7 @@ class GameCommands(commands.Cog):
             await interaction.followup.send(embed=error_embed(str(exc)), ephemeral=True)
             return
         body = f"🪙 **{result}면**이 나왔어요! (내 선택: {면.value})\n" + ("🎉 맞혔어요!" if payout else "아쉬워요…")
-        await _animate(interaction, lambda: game_anim.coin_gif(result), "🪙 동전 던지기", 3.0,
+        await _animate(interaction, lambda: game_anim.coin_gif(result), "🪙 동전 던지기", 2.6,
                        _result_embed("🪙 동전 던지기", body, 금액, payout, bal), t0)
 
     @app_commands.command(name="주사위", description="주사위를 굴려요. 홀/짝은 1.95배, 숫자 맞히기는 5.7배!")
@@ -314,7 +314,7 @@ class GameCommands(commands.Cog):
             await interaction.followup.send(embed=error_embed(str(exc)), ephemeral=True)
             return
         body = f"🎲 **{roll}** (내 선택: {선택.value})\n" + ("🎉 맞혔어요!" if payout else "아쉬워요…")
-        await _animate(interaction, lambda: game_anim.dice_gif(roll), "🎲 주사위", 2.6,
+        await _animate(interaction, lambda: game_anim.dice_gif(roll), "🎲 주사위", 1.8,
                        _result_embed("🎲 주사위", body, 금액, payout, bal), t0)
 
     @app_commands.command(name="슬롯", description="슬롯머신! 3개 일치 5~150배, 2개 일치는 일부 환급")
@@ -334,7 +334,7 @@ class GameCommands(commands.Cog):
             await interaction.followup.send(embed=error_embed(str(exc)), ephemeral=True)
             return
         note = {0.0: "꽝!", games.SLOT_PAIR_MULT: "2개 일치 — 일부 환급"}.get(mult, f"🎉 3개 일치! ×{mult:g}")
-        await _animate(interaction, lambda: game_anim.slot_gif(reels), "🎰 슬롯머신", 3.4,
+        await _animate(interaction, lambda: game_anim.slot_gif(reels), "🎰 슬롯머신", 2.8,
                        _result_embed("🎰 슬롯머신", f"**[ {'  '.join(reels)} ]**\n{note}", 금액, payout, bal), t0)
 
     @app_commands.command(name="블랙잭", description="딜러와 블랙잭! 블랙잭은 1.5배 보너스")
