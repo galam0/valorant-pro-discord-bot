@@ -249,7 +249,7 @@ python -m unittest discover -s tests -v
 
 ## 이미지 출처
 
-슬롯 심볼(`assets/slot/`)과 동전(`assets/coin/`)은 [Microsoft Fluent Emoji](https://github.com/microsoft/fluentui-emoji) 3D 스타일 (MIT 라이선스, `assets/slot/LICENSE-fluent-emoji.txt`)입니다.
+슬롯 심볼(`assets/slot/`)은 [Microsoft Fluent Emoji](https://github.com/microsoft/fluentui-emoji) 3D 스타일 (MIT 라이선스, `assets/slot/LICENSE-fluent-emoji.txt`)입니다.
 
 ## 데이터 출처
 

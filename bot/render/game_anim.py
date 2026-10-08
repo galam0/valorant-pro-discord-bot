@@ -69,29 +69,51 @@ def _star(cx, cy, ro, ri, rot=-math.pi / 2):
              cy + (ro if i % 2 == 0 else ri) * math.sin(rot + i * math.pi / 5)) for i in range(10)]
 
 
-COIN_DIR = Path(__file__).resolve().parents[2] / "assets" / "coin"
+V_RED, V_RED_D, V_NAVY, V_OFF = (255, 70, 85), (204, 46, 62), (15, 25, 35), (236, 232, 225)
 
 
 def coin_sprite(face: str, size: int = 210) -> Image.Image:
-    """Fluent Emoji 3D 금화(MIT) 위에 앞면=별, 뒷면=왕관 문양을 얹는다. 파일이 없으면 직접 그린 동전으로 대신한다."""
+    """발로란트 느낌(레드·네이비·오프화이트, 각진 면 분할)의 오리지널 동전. 앞면=조준선, 뒷면=쉐브론. 공식 로고·VP 아이콘은 쓰지 않는다."""
     key = ("coin", face, size)
     if key in _sprites:
         return _sprites[key]
-    try:
-        big = 512
-        base = Image.open(COIN_DIR / "coin.png").convert("RGBA").resize((big, big), Image.LANCZOS)
-        inner = tuple(int(c * 0.86) for c in base.getpixel((big // 2, int(big * 0.26)))[:3])   # 안쪽 원판 색(조금 어둡게)으로 기존 문양을 덮는다
-        ImageDraw.Draw(base).ellipse([big * 0.185, big * 0.185, big * 0.815, big * 0.815], fill=inner + (255,))
-        emblem = Image.open(COIN_DIR / ("star.png" if face == "앞" else "crown.png")).convert("RGBA")
-        e = int(big * (0.46 if face == "앞" else 0.56))
-        emblem = emblem.resize((e, e), Image.LANCZOS)
-        base.alpha_composite(emblem, ((big - e) // 2, (big - e) // 2 + int(big * 0.01)))
-        out = base.resize((size, size), Image.LANCZOS)
-    except Exception:
-        out, d, n = _canvas(size)
-        d.ellipse([n * 0.04, n * 0.04, n * 0.96, n * 0.96], fill=GOLD_M, outline=GOLD_D, width=int(n * 0.04))
-        d.text((n / 2, n / 2), face, font=font("heavy", int(n * 0.5)), fill=GOLD_D, anchor="mm")
-        out = _down(out, size)
+    img, d, n = _canvas(size)
+    c = n / 2
+
+    def circle(r, fill=None, outline=None, width=0):
+        d.ellipse([c - r, c - r, c + r, c + r], fill=fill, outline=outline, width=width)
+
+    circle(n * 0.485, fill=V_NAVY)                         # 외곽선
+    circle(n * 0.455, fill=V_OFF)                          # 테두리 링
+    for k in range(32):                                    # 링의 톱니 홈
+        ang = math.radians(k * 360 / 32)
+        d.line([(c + n * 0.405 * math.cos(ang), c + n * 0.405 * math.sin(ang)),
+                (c + n * 0.448 * math.cos(ang), c + n * 0.448 * math.sin(ang))], fill=(196, 190, 182), width=int(n * 0.012))
+    circle(n * 0.385, fill=V_NAVY)
+    # 안쪽 원판: 붉은 면을 대각선으로 나눈 두 톤
+    disc = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    dd = ImageDraw.Draw(disc)
+    dd.ellipse([c - n * 0.36, c - n * 0.36, c + n * 0.36, c + n * 0.36], fill=V_RED)
+    dd.polygon([(n * 0.12, n * 0.9), (n * 0.9, n * 0.12), (n, n * 0.12), (n, n), (0, n)], fill=V_RED_D)
+    mask = Image.new("L", (n, n), 0)
+    ImageDraw.Draw(mask).ellipse([c - n * 0.36, c - n * 0.36, c + n * 0.36, c + n * 0.36], fill=255)
+    layer = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    layer.paste(disc, (0, 0), mask)
+    img.alpha_composite(layer)
+    d = ImageDraw.Draw(img)
+    d.arc([c - n * 0.43, c - n * 0.43, c + n * 0.43, c + n * 0.43], 200, 255, fill=(255, 255, 255), width=int(n * 0.022))   # 하이라이트
+    if face == "앞":      # 조준선
+        w = int(n * 0.04)
+        d.ellipse([c - n * 0.17, c - n * 0.17, c + n * 0.17, c + n * 0.17], outline=V_OFF, width=w)
+        for (x0, y0, x1, y1) in ((0, -0.3, 0, -0.1), (0, 0.3, 0, 0.1), (-0.3, 0, -0.1, 0), (0.3, 0, 0.1, 0)):
+            d.line([(c + x0 * n, c + y0 * n), (c + x1 * n, c + y1 * n)], fill=V_OFF, width=w)
+        d.ellipse([c - n * 0.03, c - n * 0.03, c + n * 0.03, c + n * 0.03], fill=V_OFF)
+    else:                 # 쉐브론 두 줄 (위로 올라가는 느낌)
+        for dy in (-0.07, 0.11):
+            y = c + dy * n
+            d.polygon([(c - n * 0.2, y + n * 0.06), (c, y - n * 0.12), (c + n * 0.2, y + n * 0.06),
+                       (c + n * 0.2, y + n * 0.14), (c, y - n * 0.04), (c - n * 0.2, y + n * 0.14)], fill=V_OFF)
+    out = _down(img, size)
     _sprites[key] = out
     return out
 
@@ -103,7 +125,7 @@ def _coin_at(canvas: Image.Image, cx: float, cy: float, c: float, face: str, siz
     flat = spr.resize((w, size), Image.LANCZOS)
     thick = int((1 - abs(c)) * 16)
     if thick > 0:
-        edge = Image.new("RGBA", flat.size, (176, 122, 16, 255))
+        edge = Image.new("RGBA", flat.size, (160, 154, 146, 255))
         edge.putalpha(flat.getchannel("A"))
         for t in range(thick, 0, -2):
             canvas.paste(edge, (int(cx - w / 2 + t), int(cy - size / 2)), edge)
@@ -186,7 +208,7 @@ def _coin_gif(result: str, variant: int = 0) -> bytes:
         frames.append(img)
         durs.append(60 + int(70 * t))
     final = frames[-1].copy()
-    _banner(final, f"{result}면!", GOLD)
+    _banner(final, f"{result}면!", V_RED)
     frames.append(final)
     durs.append(3000)
     return gif_bytes(frames, durs)
