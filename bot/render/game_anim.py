@@ -73,7 +73,7 @@ V_RED, V_RED_D, V_NAVY, V_OFF = (255, 70, 85), (204, 46, 62), (15, 25, 35), (236
 
 
 def coin_sprite(face: str, size: int = 210) -> Image.Image:
-    """발로란트 느낌(레드·네이비·오프화이트, 각진 면 분할)의 오리지널 동전. 앞면=조준선, 뒷면=쉐브론. 공식 로고·VP 아이콘은 쓰지 않는다."""
+    """발로란트 느낌(레드·네이비·오프화이트, 각진 면 분할)의 오리지널 동전. 앞면=글자 V, 뒷면=쉐브론. 공식 로고·VP 아이콘은 쓰지 않는다."""
     key = ("coin", face, size)
     if key in _sprites:
         return _sprites[key]
@@ -102,12 +102,8 @@ def coin_sprite(face: str, size: int = 210) -> Image.Image:
     img.alpha_composite(layer)
     d = ImageDraw.Draw(img)
     d.arc([c - n * 0.43, c - n * 0.43, c + n * 0.43, c + n * 0.43], 200, 255, fill=(255, 255, 255), width=int(n * 0.022))   # 하이라이트
-    if face == "앞":      # 조준선
-        w = int(n * 0.04)
-        d.ellipse([c - n * 0.17, c - n * 0.17, c + n * 0.17, c + n * 0.17], outline=V_OFF, width=w)
-        for (x0, y0, x1, y1) in ((0, -0.3, 0, -0.1), (0, 0.3, 0, 0.1), (-0.3, 0, -0.1, 0), (0.3, 0, 0.1, 0)):
-            d.line([(c + x0 * n, c + y0 * n), (c + x1 * n, c + y1 * n)], fill=V_OFF, width=w)
-        d.ellipse([c - n * 0.03, c - n * 0.03, c + n * 0.03, c + n * 0.03], fill=V_OFF)
+    if face == "앞":      # 일반 글꼴의 알파벳 V (로고 모양이 아님)
+        d.text((c, c + n * 0.02), "V", font=font("heavy", int(n * 0.5)), fill=V_OFF, anchor="mm")
     else:                 # 쉐브론 두 줄 (위로 올라가는 느낌)
         for dy in (-0.07, 0.11):
             y = c + dy * n
