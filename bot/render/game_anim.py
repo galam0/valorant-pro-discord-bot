@@ -70,10 +70,11 @@ def _star(cx, cy, ro, ri, rot=-math.pi / 2):
 
 
 V_RED, V_RED_D, V_NAVY, V_OFF = (255, 70, 85), (204, 46, 62), (15, 25, 35), (236, 232, 225)
+V_WHITE, V_WHITE_D = (252, 250, 245), (232, 228, 220)
 
 
 def coin_sprite(face: str, size: int = 210) -> Image.Image:
-    """발로란트 느낌(레드·네이비·오프화이트, 각진 면 분할)의 오리지널 동전. 앞면=글자 V, 뒷면=쉐브론. 공식 로고·VP 아이콘은 쓰지 않는다."""
+    """흰 바탕에 빨간 글자 동전. 앞면=V, 뒷면=VP. (공식 로고 모양이 아닌 일반 글꼴)"""
     key = ("coin", face, size)
     if key in _sprites:
         return _sprites[key]
@@ -84,31 +85,25 @@ def coin_sprite(face: str, size: int = 210) -> Image.Image:
         d.ellipse([c - r, c - r, c + r, c + r], fill=fill, outline=outline, width=width)
 
     circle(n * 0.485, fill=V_NAVY)                         # 외곽선
-    circle(n * 0.455, fill=V_OFF)                          # 테두리 링
+    circle(n * 0.455, fill=V_RED)                          # 빨간 테두리 링
     for k in range(32):                                    # 링의 톱니 홈
         ang = math.radians(k * 360 / 32)
         d.line([(c + n * 0.405 * math.cos(ang), c + n * 0.405 * math.sin(ang)),
-                (c + n * 0.448 * math.cos(ang), c + n * 0.448 * math.sin(ang))], fill=(196, 190, 182), width=int(n * 0.012))
+                (c + n * 0.448 * math.cos(ang), c + n * 0.448 * math.sin(ang))], fill=V_RED_D, width=int(n * 0.014))
     circle(n * 0.385, fill=V_NAVY)
-    # 안쪽 원판: 붉은 면을 대각선으로 나눈 두 톤
-    disc = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    disc = Image.new("RGBA", (n, n), (0, 0, 0, 0))          # 흰 원판 (대각선으로 아주 살짝 다른 톤)
     dd = ImageDraw.Draw(disc)
-    dd.ellipse([c - n * 0.36, c - n * 0.36, c + n * 0.36, c + n * 0.36], fill=V_RED)
-    dd.polygon([(n * 0.12, n * 0.9), (n * 0.9, n * 0.12), (n, n * 0.12), (n, n), (0, n)], fill=V_RED_D)
+    dd.ellipse([c - n * 0.36, c - n * 0.36, c + n * 0.36, c + n * 0.36], fill=V_WHITE)
+    dd.polygon([(n * 0.12, n * 0.9), (n * 0.9, n * 0.12), (n, n * 0.12), (n, n), (0, n)], fill=V_WHITE_D)
     mask = Image.new("L", (n, n), 0)
     ImageDraw.Draw(mask).ellipse([c - n * 0.36, c - n * 0.36, c + n * 0.36, c + n * 0.36], fill=255)
     layer = Image.new("RGBA", (n, n), (0, 0, 0, 0))
     layer.paste(disc, (0, 0), mask)
     img.alpha_composite(layer)
     d = ImageDraw.Draw(img)
-    d.arc([c - n * 0.43, c - n * 0.43, c + n * 0.43, c + n * 0.43], 200, 255, fill=(255, 255, 255), width=int(n * 0.022))   # 하이라이트
-    if face == "앞":      # 일반 글꼴의 알파벳 V (로고 모양이 아님)
-        d.text((c, c + n * 0.02), "V", font=font("heavy", int(n * 0.5)), fill=V_OFF, anchor="mm")
-    else:                 # 쉐브론 두 줄 (위로 올라가는 느낌)
-        for dy in (-0.07, 0.11):
-            y = c + dy * n
-            d.polygon([(c - n * 0.2, y + n * 0.06), (c, y - n * 0.12), (c + n * 0.2, y + n * 0.06),
-                       (c + n * 0.2, y + n * 0.14), (c, y - n * 0.04), (c - n * 0.2, y + n * 0.14)], fill=V_OFF)
+    d.arc([c - n * 0.43, c - n * 0.43, c + n * 0.43, c + n * 0.43], 200, 255, fill=(255, 255, 255), width=int(n * 0.022))
+    text, px = ("V", 0.56) if face == "앞" else ("VP", 0.38)
+    d.text((c, c + n * 0.02), text, font=font("heavy", int(n * px)), fill=V_RED, anchor="mm")
     out = _down(img, size)
     _sprites[key] = out
     return out
