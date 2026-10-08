@@ -71,25 +71,35 @@ def _star(cx, cy, ro, ri, rot=-math.pi / 2):
 
 V_RED, V_RED_D, V_NAVY, V_OFF = (255, 70, 85), (204, 46, 62), (15, 25, 35), (236, 232, 225)
 V_WHITE, V_WHITE_D = (252, 250, 245), (232, 228, 220)
+# 동전 포인트 색 (테두리, 홈, 글자) — COIN_THEME 으로 선택
+COIN_THEMES = {
+    "red": ((255, 70, 85), (204, 46, 62)),
+    "blue": ((64, 140, 255), (38, 100, 205)),
+    "gold": ((240, 180, 40), (190, 135, 20)),
+    "teal": ((30, 200, 170), (18, 150, 128)),
+    "purple": ((150, 100, 255), (110, 70, 205)),
+}
+COIN_THEME = "red"
 
 
 def coin_sprite(face: str, size: int = 210) -> Image.Image:
     """흰 바탕에 빨간 글자 동전. 앞면=V, 뒷면=VP. (공식 로고 모양이 아닌 일반 글꼴)"""
-    key = ("coin", face, size)
+    key = ("coin", face, size, COIN_THEME)
     if key in _sprites:
         return _sprites[key]
     img, d, n = _canvas(size)
     c = n / 2
+    ACC, ACC_D = COIN_THEMES[COIN_THEME]
 
     def circle(r, fill=None, outline=None, width=0):
         d.ellipse([c - r, c - r, c + r, c + r], fill=fill, outline=outline, width=width)
 
     circle(n * 0.485, fill=V_NAVY)                         # 외곽선
-    circle(n * 0.455, fill=V_RED)                          # 빨간 테두리 링
+    circle(n * 0.455, fill=ACC)                          # 빨간 테두리 링
     for k in range(32):                                    # 링의 톱니 홈
         ang = math.radians(k * 360 / 32)
         d.line([(c + n * 0.405 * math.cos(ang), c + n * 0.405 * math.sin(ang)),
-                (c + n * 0.448 * math.cos(ang), c + n * 0.448 * math.sin(ang))], fill=V_RED_D, width=int(n * 0.014))
+                (c + n * 0.448 * math.cos(ang), c + n * 0.448 * math.sin(ang))], fill=ACC_D, width=int(n * 0.014))
     circle(n * 0.385, fill=V_NAVY)
     disc = Image.new("RGBA", (n, n), (0, 0, 0, 0))          # 흰 원판 (대각선으로 아주 살짝 다른 톤)
     dd = ImageDraw.Draw(disc)
@@ -103,7 +113,7 @@ def coin_sprite(face: str, size: int = 210) -> Image.Image:
     d = ImageDraw.Draw(img)
     d.arc([c - n * 0.43, c - n * 0.43, c + n * 0.43, c + n * 0.43], 200, 255, fill=(255, 255, 255), width=int(n * 0.022))
     text, px = ("V", 0.56) if face == "앞" else ("VP", 0.38)
-    d.text((c, c + n * 0.02), text, font=font("heavy", int(n * px)), fill=V_RED, anchor="mm")
+    d.text((c, c + n * 0.02), text, font=font("heavy", int(n * px)), fill=ACC, anchor="mm")
     out = _down(img, size)
     _sprites[key] = out
     return out
