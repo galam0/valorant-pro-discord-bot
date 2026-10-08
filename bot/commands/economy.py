@@ -52,13 +52,25 @@ class EconomyCommands(commands.Cog):
         rank, total = await eco.rank_info(interaction.guild_id, interaction.user.id)
         await interaction.response.send_message(embed=wallet_embed(bal, rank, total), view=CheckinView(), ephemeral=True)
 
-    @app_commands.command(name="출석", description="하루 한 번 100 VP를 받습니다.")
-    async def checkin(self, interaction: discord.Interaction) -> None:
+    async def _do_checkin(self, interaction: discord.Interaction) -> None:
         if not await self._guard(interaction):
             return
         got, bal = await eco.checkin(interaction.guild_id, interaction.user.id)
         rank, total = await eco.rank_info(interaction.guild_id, interaction.user.id)
         await interaction.response.send_message(embed=wallet_embed(bal, rank, total, checked=got, got=100), ephemeral=True)
+
+    @app_commands.command(name="출석", description="하루 한 번 100 VP를 받습니다.")
+    async def checkin(self, interaction: discord.Interaction) -> None:
+        await self._do_checkin(interaction)
+
+    # 슬래시 명령어에는 별칭 기능이 없어서 같은 동작의 명령어를 따로 등록한다.
+    @app_commands.command(name="출첵", description="출석과 같아요. 하루 한 번 100 VP를 받습니다.")
+    async def checkin_short(self, interaction: discord.Interaction) -> None:
+        await self._do_checkin(interaction)
+
+    @app_commands.command(name="ㅊㅊ", description="출석과 같아요. 하루 한 번 100 VP를 받습니다.")
+    async def checkin_chosung(self, interaction: discord.Interaction) -> None:
+        await self._do_checkin(interaction)
 
     @app_commands.command(name="vp랭킹", description="이 서버의 VP 랭킹 TOP 10")
     async def vp_rank(self, interaction: discord.Interaction) -> None:

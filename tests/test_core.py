@@ -572,7 +572,7 @@ class EconomyCommandsTest(unittest.TestCase):
                 for k in n.keywords:
                     if k.arg == "name":
                         names.append(k.value.value)
-        self.assertEqual(set(names), {"vp", "출석", "vp랭킹", "예측", "내예측", "예측현황"})
+        self.assertEqual(set(names), {"vp", "출석", "vp랭킹", "예측", "내예측", "예측현황", "출첵", "ㅊㅊ"})
         for nm in names:
             self.assertEqual(nm, nm.lower())
         self.assertIn("bot.commands.economy", open("bot/commands/__init__.py", encoding="utf-8").read())
