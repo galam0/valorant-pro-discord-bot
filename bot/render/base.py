@@ -90,7 +90,8 @@ def pill(draw: ImageDraw.ImageDraw, xy: tuple[float, float], text: str, fill: tu
     return x + w
 
 
-DARK_LUMA = 85          # 이보다 어두운 픽셀을 '검정 계열'로 본다 (0~255)
+DARK_VALUE = 90         # R·G·B 중 가장 밝은 값이 이보다 낮은 픽셀만 '검정 계열'로 본다 (0~255)
+                        # 밝기(휘도) 기준이면 진한 빨강(농심 등)도 어둡게 잡혀 흰색이 돼 버린다
 DARK_SHARE = 0.5        # 로고의 보이는 픽셀 중 이 비율 이상이 검정 계열이면 흰색으로 바꾼다
 
 
@@ -106,7 +107,9 @@ def lighten_dark_logo(lg: Image.Image) -> Image.Image:
     total = opaque.histogram()[255]
     if total == 0:
         return lg
-    dark = ImageChops.multiply(lg.convert("L").point(lambda v: 255 if v < DARK_LUMA else 0), opaque)
+    r, g, b, _ = lg.split()
+    value = ImageChops.lighter(ImageChops.lighter(r, g), b)       # 픽셀별 max(R, G, B)
+    dark = ImageChops.multiply(value.point(lambda v: 255 if v < DARK_VALUE else 0), opaque)
     if dark.histogram()[255] / total < DARK_SHARE:
         return lg
     white = Image.new("RGB", lg.size, (245, 245, 245))

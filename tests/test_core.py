@@ -384,6 +384,13 @@ class LogoLightenTest(unittest.TestCase):
         src = self._logo((230, 40, 60, 255))
         self.assertEqual(lighten_dark_logo(src).getpixel((30, 30)), (230, 40, 60, 255))
 
+    def test_deep_red_logo_unchanged(self):
+        src = self._logo((200, 16, 46, 255))   # 농심 같은 진한 빨강: 휘도는 낮지만 검정이 아니다
+        self.assertEqual(lighten_dark_logo(src).getpixel((30, 30)), (200, 16, 46, 255))
+
+    def test_dark_navy_logo_becomes_white(self):
+        self.assertGreater(lighten_dark_logo(self._logo((15, 22, 60, 255))).getpixel((30, 30))[0], 200)
+
     def test_light_logo_unchanged(self):
         self.assertEqual(lighten_dark_logo(self._logo((250, 250, 250, 255))).getpixel((30, 30))[:3], (250, 250, 250))
 
