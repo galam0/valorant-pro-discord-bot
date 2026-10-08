@@ -23,6 +23,7 @@ EXTENSIONS = (
     "bot.commands.economy",
     "bot.commands.games",
     "bot.commands.profile",
+    "bot.commands.stocks",
     "bot.commands.settings",
     "bot.commands.admin",
 )

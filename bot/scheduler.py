@@ -21,7 +21,7 @@ import os
 
 from bot.database.database import db
 from bot.scrapers.vlr import vlr
-from bot.services import match_service, prediction_service, team_service
+from bot.services import match_service, prediction_service, stock_service, team_service
 
 log = logging.getLogger("valobot.scheduler")
 
@@ -62,6 +62,11 @@ async def _settle_sweep() -> None:
         await prediction_service.settle_finished()
     except Exception as exc:
         log.warning("[자동] 예측 정산 실패: %s: %s", type(exc).__name__, exc)
+    try:    # 주식: 끝난 경기 반영 → 시간당 변동 (DB는 이미 깨어 있다)
+        await stock_service.apply_results()
+        await stock_service.tick()
+    except Exception as exc:
+        log.warning("[자동] 주가 갱신 실패: %s: %s", type(exc).__name__, exc)
 
 
 async def job_live() -> None:
@@ -93,6 +98,10 @@ async def job_live() -> None:
             await prediction_service.settle_match(vlr_id)
         except Exception as exc:
             log.warning("[자동] 예측 정산 실패 (%s): %s: %s", vlr_id, type(exc).__name__, exc)
+    try:
+        await stock_service.apply_results()      # 방금 끝난 경기를 바로 주가에 반영
+    except Exception as exc:
+        log.warning("[자동] 주가 반영 실패: %s: %s", type(exc).__name__, exc)
 
 
 async def job_teams() -> None:

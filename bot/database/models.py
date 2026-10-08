@@ -21,6 +21,7 @@
   wallet_ledger    VP 입출금 기록 (잔액이 맞는지 추적용)
   predictions      경기 예측 (승패/스코어/MVP)
   guild_settings   서버별 설정 (게임 채널·알림 채널)
+  stocks / stock_holdings / stock_history / stock_events   가상 주식(팀 주가)
 """
 
 from __future__ import annotations
@@ -411,3 +412,49 @@ class GuildSetting(Base):
     game_channel_id: Mapped[int | None] = mapped_column(BigInteger)     # VP·예측·미니게임 명령어를 쓸 수 있는 채널
     notice_channel_id: Mapped[int | None] = mapped_column(BigInteger)   # 예측 정산 결과를 알려줄 채널
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class Stock(Base):
+    """가상 주식 종목 (팀). 주가는 모든 서버가 공유한다."""
+
+    __tablename__ = "stocks"
+
+    symbol: Mapped[str] = mapped_column(String(10), primary_key=True)
+    price: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class StockHolding(Base):
+    """서버·유저별 보유 주식. cost 는 보유분의 총 매수 금액(수수료 제외) — 평균 매수가 계산용."""
+
+    __tablename__ = "stock_holdings"
+
+    guild_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    symbol: Mapped[str] = mapped_column(String(10), primary_key=True)
+    shares: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    cost: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+
+
+class StockHistory(Base):
+    """주가 기록 (등락률·차트용)."""
+
+    __tablename__ = "stock_history"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String(10), nullable=False)
+    price: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    reason: Mapped[str] = mapped_column(String(20), nullable=False, server_default="tick")   # init / match / tick
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (Index("ix_stock_history_symbol_time", "symbol", "created_at"),)
+
+
+class StockEvent(Base):
+    """경기 결과를 주가에 이미 반영했다는 표시 (같은 경기·종목은 한 번만)."""
+
+    __tablename__ = "stock_events"
+
+    match_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    symbol: Mapped[str] = mapped_column(String(10), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

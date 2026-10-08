@@ -722,6 +722,56 @@ class CancelFeeAndChannelTest(unittest.TestCase):
             self.assertTrue(asyncio.run(gsx.check_game_channel(inter(7))))
 
 
+class StockModelTest(unittest.TestCase):
+    def test_catalog(self):
+        from bot.services import stock_model as sm
+        self.assertEqual(len(sm.STOCKS), 6)
+        self.assertEqual(len({d.symbol for d in sm.STOCKS}), 6)
+        self.assertEqual(len({d.vlr_id for d in sm.STOCKS}), 6)
+
+    def test_fee_and_totals(self):
+        from bot.services import stock_model as sm
+        self.assertEqual(sm.fee(100), 1)
+        self.assertEqual(sm.fee(150), 2)          # 올림
+        self.assertEqual(sm.fee(1), 1)            # 최소 1
+        self.assertEqual(sm.buy_total(200, 10), (2000, 20))
+        self.assertEqual(sm.sell_proceeds(200, 10), (1980, 20))
+
+    def test_match_move(self):
+        from bot.services import stock_model as sm
+        self.assertAlmostEqual(sm.match_move(300, 200, 2, 1), 0.04)
+        self.assertAlmostEqual(sm.match_move(200, 300, 2, 1), 0.06)    # 이변
+        self.assertAlmostEqual(sm.match_move(300, 200, 3, 0), 0.05)    # 큰 점수 차
+        self.assertAlmostEqual(sm.match_move(200, 300, 3, 0), 0.07)
+
+    def test_price_stays_in_band_and_moves(self):
+        import random
+        from bot.services import stock_model as sm
+        self.assertEqual(sm.apply_move(100, 100, 0.0001), 101)          # 반올림으로 안 움직이면 최소 1
+        self.assertEqual(sm.apply_move(26, 100, -0.5), 25)              # 바닥 25%
+        self.assertEqual(sm.apply_move(390, 100, 0.5), 400)             # 천장 400%
+        rng = random.Random(1)
+        p = 100
+        for _ in range(5000):
+            p = sm.noise_step(p, 100, rng)
+            self.assertTrue(25 <= p <= 400)
+        # 평균 회귀: 기준가보다 많이 낮은 가격은 평균적으로 올라온다
+        ups = sum(sm.noise_step(50, 100, random.Random(i)) > 50 for i in range(200))
+        self.assertGreater(ups, 150)
+
+    def test_position_math(self):
+        from bot.services.stock_model import Position
+        p = Position("GEN", "젠지", 10, 100.0, 120)
+        self.assertEqual((p.value, p.pnl), (1200, 200))
+        self.assertAlmostEqual(p.pnl_pct, 20.0)
+
+    def test_board_card_renders(self):
+        from bot.render.stock_card import render_stock_board
+        from bot.services.stock_model import Quote
+        q = [Quote("GEN", "젠지", 300, 3.0, [290, 300]), Quote("T1", "티원", 250, None, [250])]
+        self.assertTrue(render_stock_board(q).startswith(b"\x89PNG"))
+
+
 
 if __name__ == "__main__":
     unittest.main()
