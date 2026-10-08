@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import logging
 from io import BytesIO
 
@@ -25,11 +26,16 @@ log = logging.getLogger("valobot.cmd.profile")
 
 
 async def build_card(guild_id: int, member: discord.abc.User) -> tuple[discord.File | None, dict]:
+    t0 = time.perf_counter()
     data = await ps.card_data(guild_id, member.id, member.display_name)
+    t1 = time.perf_counter()
     if not render_enabled():
         return None, data
     avatar = await images.fetch_big(member.display_avatar.replace(size=256, format="png").url, 256)
+    t2 = time.perf_counter()
     png = await asyncio.to_thread(render_profile_card, data, avatar)
+    t3 = time.perf_counter()
+    log.info("[성능] /프로필 단계: DB %.1f초 · 아바타 %.1f초 · 카드 그리기 %.1f초", t1 - t0, t2 - t1, t3 - t2)
     return discord.File(BytesIO(png), filename="profile.png"), data
 
 

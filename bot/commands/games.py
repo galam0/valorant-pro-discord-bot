@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import time
 from io import BytesIO
 
 import discord
@@ -43,8 +44,10 @@ def _result_embed(title: str, body: str, stake: int, payout: int, balance: int) 
     return embed
 
 
-async def _animate(interaction: discord.Interaction, make_gif, title: str, wait: float, result: discord.Embed) -> None:
-    """GIF를 먼저 보여주고, 재생이 끝날 즈음 결과 글자를 채운다."""
+async def _animate(interaction: discord.Interaction, make_gif, title: str, wait: float, result: discord.Embed,
+                   t0: float | None = None) -> None:
+    """GIF를 먼저 보여주고, 재생이 끝날 즈음 결과 글자를 채운다. (t0: 명령어 시작 시각 — 단계별 시간 로그용)"""
+    t_begin = time.perf_counter()
     if not render_enabled():
         await interaction.followup.send(embed=result)
         return
@@ -58,12 +61,16 @@ async def _animate(interaction: discord.Interaction, make_gif, title: str, wait:
     result.set_image(url="attachment://anim.gif")
     pending = discord.Embed(title=title, description="두근두근…", color=COLOR_INFO)
     pending.set_image(url="attachment://anim.gif")
+    t_gif = time.perf_counter()
     await interaction.followup.send(embed=pending, file=_file(gif, "anim.gif"))
+    t_sent = time.perf_counter()
     await asyncio.sleep(wait)
     try:
         await interaction.edit_original_response(embed=result)
     except discord.HTTPException:
         log.info("게임 결과 메시지를 수정하지 못했어요")
+    log.info("[성능] %s 단계: 준비·DB %.1f초 · GIF 만들기 %.1f초(%dKB) · 업로드 %.1f초 · 일부러 기다림 %.1f초",
+             title, (t_begin - t0) if t0 else 0.0, t_gif - t_begin, len(gif) // 1024, t_sent - t_gif, wait)
 
 
 def _hand(cards: list[str]) -> str:
@@ -278,6 +285,7 @@ class GameCommands(commands.Cog):
         if not await self._guard(interaction):
             return
         await interaction.response.defer()
+        t0 = time.perf_counter()
         result = games.coin_flip()
         payout = int(금액 * games.COIN_MULT) if result == 면.value else 0
         try:
@@ -287,7 +295,7 @@ class GameCommands(commands.Cog):
             return
         body = f"🪙 **{result}면**이 나왔어요! (내 선택: {면.value})\n" + ("🎉 맞혔어요!" if payout else "아쉬워요…")
         await _animate(interaction, lambda: game_anim.coin_gif(result), "🪙 동전 던지기", 3.0,
-                       _result_embed("🪙 동전 던지기", body, 금액, payout, bal))
+                       _result_embed("🪙 동전 던지기", body, 금액, payout, bal), t0)
 
     @app_commands.command(name="주사위", description="주사위를 굴려요. 홀/짝은 1.95배, 숫자 맞히기는 5.7배!")
     @app_commands.describe(금액="걸 VP (10~2000)", 선택="홀, 짝, 또는 1~6 중 하나")
@@ -297,6 +305,7 @@ class GameCommands(commands.Cog):
         if not await self._guard(interaction):
             return
         await interaction.response.defer()
+        t0 = time.perf_counter()
         roll = random.randint(1, 6)
         payout = games.dice_payout(선택.value, roll, 금액)
         try:
@@ -306,7 +315,7 @@ class GameCommands(commands.Cog):
             return
         body = f"🎲 **{roll}** (내 선택: {선택.value})\n" + ("🎉 맞혔어요!" if payout else "아쉬워요…")
         await _animate(interaction, lambda: game_anim.dice_gif(roll), "🎲 주사위", 2.6,
-                       _result_embed("🎲 주사위", body, 금액, payout, bal))
+                       _result_embed("🎲 주사위", body, 금액, payout, bal), t0)
 
     @app_commands.command(name="슬롯", description="슬롯머신! 3개 일치 5~150배, 2개 일치는 일부 환급")
     @app_commands.describe(금액="걸 VP (10~2000)")
@@ -315,6 +324,7 @@ class GameCommands(commands.Cog):
         if not await self._guard(interaction):
             return
         await interaction.response.defer()
+        t0 = time.perf_counter()
         reels = games.slot_spin()
         mult = games.slot_multiplier(reels)
         payout = int(금액 * mult)
@@ -325,7 +335,7 @@ class GameCommands(commands.Cog):
             return
         note = {0.0: "꽝!", games.SLOT_PAIR_MULT: "2개 일치 — 일부 환급"}.get(mult, f"🎉 3개 일치! ×{mult:g}")
         await _animate(interaction, lambda: game_anim.slot_gif(reels), "🎰 슬롯머신", 3.4,
-                       _result_embed("🎰 슬롯머신", f"**[ {'  '.join(reels)} ]**\n{note}", 금액, payout, bal))
+                       _result_embed("🎰 슬롯머신", f"**[ {'  '.join(reels)} ]**\n{note}", 금액, payout, bal), t0)
 
     @app_commands.command(name="블랙잭", description="딜러와 블랙잭! 블랙잭은 1.5배 보너스")
     @app_commands.describe(금액="걸 VP (10~2000)")
