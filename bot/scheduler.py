@@ -62,11 +62,6 @@ async def _settle_sweep() -> None:
         await prediction_service.settle_finished()
     except Exception as exc:
         log.warning("[자동] 예측 정산 실패: %s: %s", type(exc).__name__, exc)
-    try:    # 주식: 끝난 경기 반영 → 시간당 변동 (DB는 이미 깨어 있다)
-        await stock_service.apply_results()
-        await stock_service.tick()
-    except Exception as exc:
-        log.warning("[자동] 주가 갱신 실패: %s: %s", type(exc).__name__, exc)
 
 
 async def job_live() -> None:
@@ -98,10 +93,15 @@ async def job_live() -> None:
             await prediction_service.settle_match(vlr_id)
         except Exception as exc:
             log.warning("[자동] 예측 정산 실패 (%s): %s: %s", vlr_id, type(exc).__name__, exc)
+
+
+async def job_stocks() -> None:
+    """가상 주식 가격 변동 (매시 정각). 실제 경기와는 상관없이 무작위로 오르내린다."""
     try:
-        await stock_service.apply_results()      # 방금 끝난 경기를 바로 주가에 반영
+        await stock_service.tick()
+        log.info("[자동] 주가 변동")
     except Exception as exc:
-        log.warning("[자동] 주가 반영 실패: %s: %s", type(exc).__name__, exc)
+        log.warning("[자동] 주가 변동 실패: %s: %s", type(exc).__name__, exc)
 
 
 async def job_teams() -> None:
@@ -142,6 +142,9 @@ def start() -> None:
                   next_run_time=_in(seconds=90), **common)
     sched.add_job(job_live, "interval", minutes=10, id="live", jitter=10,
                   next_run_time=_in(seconds=150), **common)
+    # 주가는 매시 정각에 한 번 (놓쳐도 30분 안에 켜지면 실행) — /주식시간 의 계산과 같은 규칙
+    sched.add_job(job_stocks, CronTrigger(minute=0, timezone="Asia/Seoul"), id="stocks",
+                  **{**common, "misfire_grace_time": 1800})
     # 재배포·재시작으로 그 시각을 놓쳐도 6시간 안에 켜지면 실행
     sched.add_job(job_teams, CronTrigger(month="1,3,5,7,9,11", day=1, hour=4, minute=30, timezone="Asia/Seoul"),
                   id="teams", **{**common, "misfire_grace_time": 6 * 3600})

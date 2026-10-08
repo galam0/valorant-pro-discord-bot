@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
 
 from bot.database import economy, stocks
 from bot.database.database import db
 from bot.services import stock_model as sm
-from bot.services.stock_model import Position, Quote, Trade
+from bot.services.stock_model import Position, Quote, Trade, next_tick_at  # noqa: F401  (재노출)
 
 log = logging.getLogger("valobot.service.stock")
-
-RESULT_WINDOW = timedelta(days=1)    # 이 기간 안에 끝난 경기만 주가에 반영 (오래된 경기가 한꺼번에 반영되는 것 방지)
 
 
 class StockError(Exception):
@@ -116,39 +113,8 @@ async def portfolio(guild_id: int, user_id: int) -> tuple[list[Position], int]:
 
 
 # ---------------------------------------------------------------------------
-# 가격 변동 (scheduler 가 부른다 — DB 접근은 필요할 때만)
+# 가격 변동 (scheduler 가 매시 정각에 부른다)
 # ---------------------------------------------------------------------------
-
-
-async def apply_results() -> int:
-    """최근에 끝난 경기를 주가에 반영한다 (경기·종목마다 한 번만). 반영한 종목 수."""
-    since = datetime.now(timezone.utc) - RESULT_WINDOW
-    applied = 0
-    async with db.session() as s:
-        await stocks.ensure_stocks(s, sm.STOCKS)
-        prices = await stocks.get_prices(s)
-        matches = await stocks.recent_completed_matches(s, list(sm.BY_NAME), since)
-        for match_id, n1, n2, sc1, sc2 in matches:
-            if sc1 == sc2:
-                continue
-            win_n, lose_n, ws, ls = (n1, n2, sc1, sc2) if sc1 > sc2 else (n2, n1, sc2, sc1)
-            w, l = sm.BY_NAME.get(win_n.lower()), sm.BY_NAME.get(lose_n.lower())
-            # 상대 팀이 종목이 아니어도, 그 팀의 기준가를 몰라 '이변' 판정은 못 하니 기본 상승률만 쓴다.
-            w_price = prices.get(w.symbol) if w else None
-            l_price = prices.get(l.symbol) if l else None
-            move = sm.match_move(w_price or 0, l_price or 10**9, ws, ls) if w_price else sm.WIN_MOVE
-            for d, sign in ((w, 1), (l, -1)):
-                if d is None or not await stocks.claim_event(s, match_id, d.symbol):
-                    continue
-                new = sm.apply_move(prices[d.symbol], d.base, sign * move)
-                await stocks.set_price(s, d.symbol, new, "match")
-                prices[d.symbol] = new
-                applied += 1
-        if applied:
-            await s.commit()
-    if applied:
-        log.info("[주식] 경기 결과 반영: %d종목", applied)
-    return applied
 
 
 async def tick() -> None:

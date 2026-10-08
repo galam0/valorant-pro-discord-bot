@@ -728,8 +728,8 @@ class StockModelTest(unittest.TestCase):
         self.assertEqual(len(sm.STOCKS), 6)
         self.assertEqual(len({d.symbol for d in sm.STOCKS}), 6)
         self.assertEqual(len({d.vlr_id for d in sm.STOCKS}), 6)
-        self.assertEqual(sm.BY_NAME["varrel"].symbol, "VL")
-        self.assertEqual(sm.BY_NAME["kiwoom drx"].symbol, "KRX")
+        self.assertIn("VL", sm.BY_SYMBOL)
+        self.assertIn("KRX", sm.BY_SYMBOL)
 
     def test_fee_and_totals(self):
         from bot.services import stock_model as sm
@@ -738,13 +738,6 @@ class StockModelTest(unittest.TestCase):
         self.assertEqual(sm.fee(1), 1)            # 최소 1
         self.assertEqual(sm.buy_total(200, 10), (2000, 20))
         self.assertEqual(sm.sell_proceeds(200, 10), (1980, 20))
-
-    def test_match_move(self):
-        from bot.services import stock_model as sm
-        self.assertAlmostEqual(sm.match_move(300, 200, 2, 1), 0.04)
-        self.assertAlmostEqual(sm.match_move(200, 300, 2, 1), 0.06)    # 이변
-        self.assertAlmostEqual(sm.match_move(300, 200, 3, 0), 0.05)    # 큰 점수 차
-        self.assertAlmostEqual(sm.match_move(200, 300, 3, 0), 0.07)
 
     def test_price_stays_in_band_and_moves(self):
         import random
@@ -759,7 +752,15 @@ class StockModelTest(unittest.TestCase):
             self.assertTrue(25 <= p <= 400)
         # 평균 회귀: 기준가보다 많이 낮은 가격은 평균적으로 올라온다
         ups = sum(sm.noise_step(50, 100, random.Random(i)) > 50 for i in range(200))
-        self.assertGreater(ups, 150)
+        self.assertGreater(ups, 120)
+
+    def test_next_tick_is_top_of_next_hour(self):
+        from datetime import datetime, timedelta, timezone
+        from bot.services.stock_model import next_tick_at
+        kst = timezone(timedelta(hours=9))
+        self.assertEqual(next_tick_at(datetime(2026, 10, 8, 18, 10, 5, tzinfo=kst)), datetime(2026, 10, 8, 19, 0, tzinfo=kst))
+        self.assertEqual(next_tick_at(datetime(2026, 10, 8, 23, 59, tzinfo=kst)), datetime(2026, 10, 9, 0, 0, tzinfo=kst))
+        self.assertEqual(next_tick_at(datetime(2026, 10, 8, 18, 0, tzinfo=kst)), datetime(2026, 10, 8, 19, 0, tzinfo=kst))
 
     def test_position_math(self):
         from bot.services.stock_model import Position

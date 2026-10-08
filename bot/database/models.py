@@ -21,7 +21,7 @@
   wallet_ledger    VP 입출금 기록 (잔액이 맞는지 추적용)
   predictions      경기 예측 (승패/스코어/MVP)
   guild_settings   서버별 설정 (게임 채널·알림 채널)
-  stocks / stock_holdings / stock_history / stock_events   가상 주식(팀 주가)
+  stocks / stock_holdings / stock_history   가상 주식(팀 주가)
 """
 
 from __future__ import annotations
@@ -448,13 +448,3 @@ class StockHistory(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (Index("ix_stock_history_symbol_time", "symbol", "created_at"),)
-
-
-class StockEvent(Base):
-    """경기 결과를 주가에 이미 반영했다는 표시 (같은 경기·종목은 한 번만)."""
-
-    __tablename__ = "stock_events"
-
-    match_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
-    symbol: Mapped[str] = mapped_column(String(10), primary_key=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

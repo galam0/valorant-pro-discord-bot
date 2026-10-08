@@ -12,7 +12,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.database.database import db
-from bot.embeds.common import COLOR_INFO, COLOR_MAIN, COLOR_OK, error_embed
+from bot.embeds.common import COLOR_INFO, COLOR_MAIN, COLOR_OK, error_embed, ts
 from bot.render import images
 from bot.render.base import render_enabled
 from bot.render.stock_card import render_stock_board
@@ -36,7 +36,7 @@ def _arrow(pct: float | None) -> str:
 def board_embed(quotes: list[ss.Quote]) -> discord.Embed:
     lines = [f"`{q.symbol:<3}` **{q.name}** — {q.price:,} VP ({_arrow(q.change_pct)})" for q in quotes]
     e = discord.Embed(title="📈 VP 주식 시세판", description="\n".join(lines), color=COLOR_MAIN)
-    e.set_footer(text=f"수수료 {sm.FEE_PCT}% · 경기에서 이기면 오르고 지면 내려요")
+    e.set_footer(text=f"수수료 {sm.FEE_PCT}% · 주가는 매시 정각에 바뀌어요")
     return e
 
 
@@ -133,6 +133,14 @@ class StockCommands(commands.Cog):
             await interaction.followup.send(embed=error_embed(str(exc)), ephemeral=True)
             return
         await interaction.followup.send(embed=trade_embed("sell", t))
+
+    @app_commands.command(name="주식시간", description="다음 주가 변동까지 남은 시간을 봅니다.")
+    async def stock_time(self, interaction: discord.Interaction) -> None:
+        nxt = ss.next_tick_at()
+        e = discord.Embed(title="⏰ 다음 주가 변동", color=COLOR_INFO,
+                          description=f"{ts(nxt, 't')} ({ts(nxt, 'R')})\n주가는 **매시 정각**에 바뀌어요.")
+        e.set_footer(text="실제 경기와는 상관없이 무작위로 오르내려요")
+        await interaction.response.send_message(embed=e)
 
     @app_commands.command(name="내주식", description="내가 가진 주식과 손익을 봅니다.")
     async def my_stocks(self, interaction: discord.Interaction) -> None:

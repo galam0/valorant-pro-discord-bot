@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.database import economy
-from bot.database.models import Match, Stock, StockEvent, StockHistory, StockHolding, Team
+from bot.database.models import Stock, StockHistory, StockHolding, Team
 
 
 class NotEnoughShares(Exception):
@@ -106,30 +106,6 @@ async def holdings(session: AsyncSession, guild_id: int, user_id: int) -> list[S
                                    StockHolding.shares > 0).order_by(StockHolding.symbol)
     )
     return list(rows.scalars())
-
-
-async def claim_event(session: AsyncSession, match_id: int, symbol: str) -> bool:
-    """경기 결과를 이 종목에 반영하는 권리를 얻는다 (이미 반영했으면 False)."""
-    row = (await session.execute(
-        pg_insert(StockEvent).values(match_id=match_id, symbol=symbol)
-        .on_conflict_do_nothing().returning(StockEvent.match_id)
-    )).first()
-    return row is not None
-
-
-async def recent_completed_matches(session: AsyncSession, names: list[str], since: datetime) -> list[tuple]:
-    """최근 끝난 경기 중 해당 팀(이름)이 포함된 것: (match.id, team1 이름, team2 이름, score1, score2).
-
-    팀이 DB의 teams 에 없어도 경기에는 팀 이름이 저장돼 있어서 이름으로 찾는다.
-    """
-    rows = await session.execute(
-        select(Match.id, Match.team1_name, Match.team2_name, Match.team1_score, Match.team2_score)
-        .where(Match.status == "completed", Match.scheduled_at >= since,
-               Match.team1_score.is_not(None), Match.team2_score.is_not(None),
-               (func.lower(Match.team1_name).in_(names)) | (func.lower(Match.team2_name).in_(names)))
-        .order_by(Match.scheduled_at.asc())
-    )
-    return [tuple(r) for r in rows.all()]
 
 
 async def team_logos(session: AsyncSession, vlr_ids: list[int]) -> dict[int, str]:
