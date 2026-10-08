@@ -6,7 +6,7 @@ from io import BytesIO
 
 from PIL import Image, ImageDraw
 
-from bot.render.base import fit_text, font, paste_logo
+from bot.render.base import fit_text, font
 
 W = 800
 ROW_H = 74
@@ -43,11 +43,14 @@ def render_stock_board(quotes: list, logos: dict | None = None) -> bytes:
     for i, q in enumerate(quotes):
         y = TOP + ROW_H * i
         d.rounded_rectangle([34, y, W - 34, y + ROW_H - 10], radius=18, fill=CARD)
-        d.ellipse([46, y + 3, 46 + 52, y + 3 + 52], fill=(44, 58, 80))     # 로고 받침 (어두운 로고는 paste_logo 가 흰색으로 바꿔준다)
-        if logos.get(q.symbol) is not None:
-            paste_logo(img, logos[q.symbol], (72, y + 29), 42)
+        d.ellipse([46, y + 3, 46 + 52, y + 3 + 52], fill=(240, 243, 248))     # 흰 받침 + 로고 원래 색 그대로
+        lg = logos.get(q.symbol)
+        if lg is not None:
+            lg = lg.convert("RGBA")
+            lg.thumbnail((38, 38), Image.LANCZOS)
+            img.paste(lg, (72 - lg.width // 2, y + 29 - lg.height // 2), lg)
         else:
-            d.text((72, y + 29), q.symbol, font=font("heavy", 16), fill=WHITE, anchor="mm")
+            d.text((72, y + 29), q.symbol, font=font("heavy", 16), fill=NAVY, anchor="mm")
         name, nf = fit_text(d, q.name, "bold", 20, 250, 14)
         d.text((116, y + 21), name, font=nf, fill=WHITE, anchor="lm")
         d.text((116, y + 45), q.symbol, font=font("bold", 14), fill=DIM, anchor="lm")
