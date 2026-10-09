@@ -139,7 +139,6 @@ class StockCommands(commands.Cog):
         nxt = ss.next_tick_at()
         e = discord.Embed(title="⏰ 다음 주가 변동", color=COLOR_INFO,
                           description=f"{ts(nxt, 't')} ({ts(nxt, 'R')})\n주가는 **매시 정각**에 바뀌어요.")
-        e.set_footer(text="실제 경기와는 상관없이 무작위로 오르내려요")
         await interaction.response.send_message(embed=e)
 
     @app_commands.command(name="내주식", description="내가 가진 주식과 손익을 봅니다.")

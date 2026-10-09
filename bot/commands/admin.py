@@ -395,12 +395,31 @@ class AdminGroup(app_commands.Group, name="관리", description="관리자 전�
             return
         await interaction.response.defer(ephemeral=True)
         rows = await eco_service.all_guild_totals()
-        lines = []
-        for gid, users, total, top in rows[:25]:
+        embed = discord.Embed(title="💰 서버별 VP 현황", color=COLOR_INFO,
+                              description=None if rows else "아직 지갑이 없어요.")
+        for gid, users, total, top in rows[:8]:
             guild = self.bot.get_guild(gid)
-            lines.append(f"**{guild.name if guild else gid}** (`{gid}`) · 유저 {users}명 · 합계 {eco_service.fmt(total)} · 최고 {eco_service.fmt(top)}")
-        embed = discord.Embed(title="💰 서버별 VP 현황", description="\n".join(lines) or "아직 지갑이 없어요.", color=COLOR_INFO)
+            board = await eco_service.leaderboard(gid, 5)
+            names = [await self._user_name(guild, uid) for uid, _ in board]
+            top_lines = [f"`{i + 1}` {name} — {eco_service.fmt(bal)}" for i, (name, (_, bal)) in enumerate(zip(names, board))]
+            embed.add_field(name=f"{guild.name if guild else gid} · 유저 {users}명 · 합계 {eco_service.fmt(total)}",
+                            value="\n".join(top_lines) or "-", inline=False)
+        if len(rows) > 8:
+            embed.set_footer(text=f"서버 {len(rows)}곳 중 8곳만 보여줘요")
         await interaction.followup.send(embed=embed, ephemeral=True)
+
+    async def _user_name(self, guild: discord.Guild | None, uid: int) -> str:
+        """서버 별명 → 캐시된 유저 → API 조회 순으로 이름을 찾는다 (못 찾으면 멘션 형태)."""
+        member = guild.get_member(uid) if guild else None
+        if member is not None:
+            return f"{member.display_name} (`{uid}`)"
+        user = self.bot.get_user(uid)
+        if user is None:
+            try:
+                user = await self.bot.fetch_user(uid)
+            except discord.HTTPException:
+                return f"알 수 없음 (`{uid}`)"
+        return f"{user.display_name} (`{uid}`)"
 
     @app_commands.command(name="vp지급", description="유저에게 VP를 지급하거나 회수합니다. (봇 제작자 전용)")
     @app_commands.describe(유저="대상 유저", 금액="지급할 VP (음수면 회수)")

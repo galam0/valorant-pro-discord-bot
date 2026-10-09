@@ -96,7 +96,7 @@ async def job_live() -> None:
 
 
 async def job_stocks() -> None:
-    """가상 주식 가격 변동 (매시 정각). 실제 경기와는 상관없이 무작위로 오르내린다."""
+    """가상 주식 가격 변동 (매시 정각)."""
     try:
         await stock_service.tick()
         log.info("[자동] 주가 변동")
