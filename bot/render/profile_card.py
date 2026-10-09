@@ -1,4 +1,4 @@
-"""/프로필 카드 (플랫 스타일: 단색 면 + 굵은 외곽선). 꾸미기 아이템(배경·테두리·칭호)이 반영된다."""
+"""/프로필 카드 (가로 배너형: 팔각형 아바타 + 사선 포인트). 꾸미기 아이템(배경·테두리·칭호)이 반영된다."""
 
 from __future__ import annotations
 
@@ -10,9 +10,10 @@ from PIL import Image, ImageDraw
 
 from bot.render.base import fit_text, font
 
-W, H = 800, 420
+W, H = 800, 300
 NAVY = (27, 36, 51)
 WHITE = (250, 247, 240)
+DIM = (150, 162, 182)
 
 # 배경 테마: (바탕, 줄무늬, 포인트)
 THEMES = {
@@ -27,92 +28,128 @@ FRAME_COLORS = {"frame_silver": ((200, 206, 216), (140, 148, 162)), "frame_gold"
                 "frame_neon": ((90, 245, 235), (30, 150, 160))}
 
 
+
+def _lum(c) -> float:
+    return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
+
+
+def _ink(accent) -> tuple[int, int, int]:
+    """포인트 색 위에 올릴 글자색 (밝은 포인트면 어두운 글자)."""
+    return NAVY if _lum(accent) > 150 else (255, 255, 255)
+
+
+def _mix(a, b, t: float) -> tuple[int, int, int]:
+    return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
+
+def _octagon(x0: float, y0: float, s: float, cut: float = 0.2) -> list[tuple[float, float]]:
+    c = s * cut
+    return [(x0 + c, y0), (x0 + s - c, y0), (x0 + s, y0 + c), (x0 + s, y0 + s - c),
+            (x0 + s - c, y0 + s), (x0 + c, y0 + s), (x0, y0 + s - c), (x0, y0 + c)]
+
+
+def _octagon_mask(size: int) -> Image.Image:
+    m = Image.new("L", (size * 4, size * 4), 0)
+    ImageDraw.Draw(m).polygon(_octagon(0, 0, size * 4 - 1), fill=255)
+    return m.resize((size, size), Image.LANCZOS)
+
+
 def _background(theme: str) -> Image.Image:
     base, stripe, _ = THEMES.get(theme, THEMES["theme_default"])
     img = Image.new("RGB", (W, H), base)
     d = ImageDraw.Draw(img)
-    for i in range(-H, W, 56):
-        d.line([(i, H), (i + H, 0)], fill=stripe, width=18)
+    dark = _mix(base, (8, 10, 18), 0.7)
+    for x in range(W):                      # 왼쪽 → 오른쪽으로 어두워지는 바탕
+        d.line([(x, 0), (x, H)], fill=_mix(base, dark, x / W))
+    for i in range(-H, W, 56):              # 테마색 사선 줄무늬
+        d.line([(i, H), (i + H, 0)], fill=_mix(stripe, dark, 0.35), width=10)
     return img
 
 
 def _avatar(size: int, avatar: Image.Image | None, name: str, accent) -> Image.Image:
     base = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    mask = Image.new("L", (size, size), 0)
-    ImageDraw.Draw(mask).ellipse([0, 0, size - 1, size - 1], fill=255)
     if avatar is not None:
-        base.paste(avatar.convert("RGBA").resize((size, size), Image.LANCZOS), (0, 0), mask)
+        base.paste(avatar.convert("RGBA").resize((size, size), Image.LANCZOS), (0, 0))
     else:
         d = ImageDraw.Draw(base)
-        d.ellipse([0, 0, size - 1, size - 1], fill=accent)
-        d.text((size / 2, size / 2), (name[:1] or "?").upper(), font=font("heavy", int(size * 0.5)), fill=WHITE, anchor="mm")
-    return base
+        d.rectangle([0, 0, size, size], fill=accent)
+        d.text((size / 2, size / 2), (name[:1] or "?").upper(), font=font("heavy", int(size * 0.5)), fill=_ink(accent), anchor="mm")
+    out = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    out.paste(base, (0, 0), _octagon_mask(size))
+    return out
 
 
-def _draw_frame(img: Image.Image, cx: int, cy: int, r: int, frame: str) -> None:
-    """r: 아바타 반지름. 링은 그 바깥에 그린다 (두께 12)."""
-    if frame == "frame_none":
-        d = ImageDraw.Draw(img)
-        d.ellipse([cx - r - 5, cy - r - 5, cx + r + 5, cy + r + 5], outline=NAVY, width=6)
-        return
+def _draw_frame(img: Image.Image, x0: int, y0: int, s: int, frame: str) -> None:
+    """팔각형 아바타(x0, y0, 한 변 s) 바깥에 테두리를 그린다 (두께 16)."""
     d = ImageDraw.Draw(img)
-    out, inn = r + 18, r
-    d.ellipse([cx - out - 4, cy - out - 4, cx + out + 4, cy + out + 4], fill=NAVY)
+    t = 16
+    if frame == "frame_none":
+        d.polygon(_octagon(x0 - 5, y0 - 5, s + 10), outline=WHITE, width=5)
+        return
+    outer = _octagon(x0 - t, y0 - t, s + 2 * t)
+    d.polygon(_octagon(x0 - t - 4, y0 - t - 4, s + 2 * t + 8), fill=NAVY)
     if frame == "frame_rainbow":
-        n = len(RAINBOW)
-        for i, col in enumerate(RAINBOW):
-            d.pieslice([cx - out, cy - out, cx + out, cy + out], i * 360 / n, (i + 1) * 360 / n, fill=col)
+        mid = _octagon(x0 - t / 2, y0 - t / 2, s + t)      # 링의 가운데 선 (두께 t)
+        n = len(mid)
+        for i in range(n):
+            col = RAINBOW[i % len(RAINBOW)]
+            a, b = mid[i], mid[(i + 1) % n]
+            d.line([a, b], fill=col, width=t)
+            d.ellipse([a[0] - t / 2, a[1] - t / 2, a[0] + t / 2, a[1] + t / 2], fill=col)
     else:
         main, dark = FRAME_COLORS[frame]
-        d.ellipse([cx - out, cy - out, cx + out, cy + out], fill=main)
-        d.arc([cx - out + 5, cy - out + 5, cx + out - 5, cy + out - 5], 20, 110, fill=dark, width=5)
-        if frame == "frame_gold":      # 보석 4개
-            for k in range(4):
-                a = math.radians(45 + 90 * k)
-                gx, gy = cx + (r + 9) * math.cos(a), cy + (r + 9) * math.sin(a)
+        d.polygon(outer, fill=main)
+        d.line(outer[:3], fill=dark, width=4)
+        if frame == "frame_gold":      # 모서리 보석
+            for gx, gy in outer[1::2]:
                 d.polygon([(gx, gy - 8), (gx + 7, gy), (gx, gy + 8), (gx - 7, gy)], fill=(232, 67, 79), outline=NAVY)
-    d.ellipse([cx - inn - 4, cy - inn - 4, cx + inn + 4, cy + inn + 4], fill=NAVY)
+    d.polygon(_octagon(x0 - 4, y0 - 4, s + 8), fill=NAVY)
 
 
 def render_profile_card(data: dict[str, Any], avatar: Image.Image | None = None) -> bytes:
     """data: name, title(표시용 글자 또는 ''), theme, frame, vp, rank, pred_win, pred_total,
     fav_team, fav_agent"""
     theme = data.get("theme", "theme_default")
-    accent = THEMES.get(theme, THEMES["theme_default"])[2]
+    base, _, accent = THEMES.get(theme, THEMES["theme_default"])
+    ink = _ink(accent)
     img = _background(theme)
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle([14, 14, W - 15, H - 15], radius=28, outline=NAVY, width=6)
+    panel = _mix(base, (8, 10, 18), 0.78)
+    d.polygon([(690, 0), (W, 0), (W, H), (600, H)], fill=accent)                 # 오른쪽 사선 포인트 면
+    d.polygon([(712, 0), (W, 0), (W, H), (622, H)], fill=panel)
 
-    cx, cy, r = 128, 128, 64
-    _draw_frame(img, cx, cy, r, data.get("frame", "frame_none"))
-    av = _avatar(r * 2, avatar, data["name"], accent)
-    img.paste(av, (cx - r, cy - r), av)
+    s, ax, ay = 204, 44, 48
+    _draw_frame(img, ax, ay, s, data.get("frame", "frame_none"))
+    av = _avatar(s, avatar, data["name"], accent)
+    img.paste(av, (ax, ay), av)
     d = ImageDraw.Draw(img)
 
-    x = 250
-    name, nf = fit_text(d, data["name"], "heavy", 46, W - x - 40, 26)
-    d.text((x, 88), name, font=nf, fill=WHITE, anchor="lm")
+    x = 290
+    name, nf = fit_text(d, data["name"], "heavy", 50, 390, 28)
+    d.text((x, 78), name, font=nf, fill=WHITE, anchor="lm")
+    tx = x
     if data.get("title"):
-        f = font("bold", 20)
+        f = font("bold", 18)
         tw = d.textlength(data["title"], font=f)
-        d.rounded_rectangle([x, 124, x + tw + 30, 158], radius=17, fill=accent, outline=NAVY, width=3)
-        d.text((x + 15, 141), data["title"], font=f, fill=NAVY, anchor="lm")
+        d.rounded_rectangle([x, 118, x + tw + 28, 150], radius=5, fill=accent)
+        d.text((x + 14 + tw / 2, 134), data["title"], font=f, fill=ink, anchor="mm")
+        tx = x + tw + 28 + 14
+    agent = data.get("fav_agent") or "-"
+    d.text((tx, 134), f"최애 요원 · {agent}", font=font("regular", 17), fill=(170, 182, 200), anchor="lm")
+
     pw = data["pred_total"]
     rate = f"{round(100 * data['pred_win'] / pw)}%" if pw else "-"
-    d.text((x, 190), f"예측 적중률  {rate}", font=font("bold", 18), fill=(200, 208, 218), anchor="lm")
+    stats = [(f"{data['vp']:,}", "VP", WHITE), (rate, "예측 적중률", WHITE), (data.get("fav_team") or "-", "응원 팀", WHITE)]
+    for i, (val, label, col) in enumerate(stats):
+        sx = x + i * 110
+        v, vf = fit_text(d, val, "heavy", 32, 98, 16)
+        d.text((sx, 206), v, font=vf, fill=col, anchor="lm")
+        d.line([(sx, 232), (sx + 82, 232)], fill=accent, width=3)
+        d.text((sx, 254), label, font=font("regular", 15), fill=DIM, anchor="lm")
 
-    cells = [("VP", f"{data['vp']:,}", (255, 214, 95)), ("서버 순위", f"{data['rank']}위", WHITE),
-             ("예측 적중", f"{data['pred_win']}/{data['pred_total']}", (120, 230, 160))]
-    cw = (W - 80) / 3
-    for i, (label, val, col) in enumerate(cells):
-        x0 = 40 + cw * i
-        d.rounded_rectangle([x0 + 5, 236, x0 + cw - 5, 330], radius=18, fill=NAVY)
-        v, vf = fit_text(d, val, "heavy", 32, cw - 34, 18)
-        d.text((x0 + cw / 2, 273), v, font=vf, fill=col, anchor="mm")
-        d.text((x0 + cw / 2, 311), label, font=font("regular", 15), fill=(150, 162, 178), anchor="mm")
-    d.rounded_rectangle([40, 346, W - 40, 390], radius=14, fill=NAVY)
-    d.text((58, 368), f"응원 팀  {data.get('fav_team') or '-'}", font=font("bold", 19), fill=WHITE, anchor="lm")
-    d.text((W - 58, 368), f"최애 요원  {data.get('fav_agent') or '-'}", font=font("bold", 19), fill=WHITE, anchor="rm")
+    d.text((W - 38, 96), "RANK", font=font("bold", 16), fill=_mix(accent, WHITE, 0.4), anchor="rm")
+    d.text((W - 38, 176), f"#{data['rank']}", font=font("heavy", 84), fill=WHITE, anchor="rm")
+    d.text((W - 38, 240), "서버 순위", font=font("regular", 16), fill=(170, 182, 200), anchor="rm")
     out = BytesIO()
     img.save(out, format="PNG")
     return out.getvalue()
