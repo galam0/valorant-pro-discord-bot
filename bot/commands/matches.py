@@ -10,7 +10,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from bot.autocomplete import team_autocomplete
+from bot.autocomplete import schedule_event_autocomplete, team_autocomplete
 from bot.database import repository as repo
 from bot.database.database import db
 from bot.embeds.common import error_embed
@@ -97,9 +97,12 @@ class MatchCommands(commands.Cog):
         await send_match_detail(interaction, target.vlr_id, others=choices_from(played, detail.team.id))
 
     @app_commands.command(name="일정", description="하루치 프로 경기 일정을 한 장의 이미지로 보여줍니다.")
-    @app_commands.describe(날짜="보고 싶은 날 (기본: 오늘, 한국 시간 기준)")
+    @app_commands.describe(날짜="보고 싶은 날 (기본: 오늘, 한국 시간 기준)", 대회="특정 대회만 보기 (선택)")
     @app_commands.choices(날짜=DAY_CHOICES)
-    async def schedule(self, interaction: discord.Interaction, 날짜: app_commands.Choice[int] | None = None) -> None:
+    @app_commands.autocomplete(대회=schedule_event_autocomplete)
+    async def schedule(
+        self, interaction: discord.Interaction, 날짜: app_commands.Choice[int] | None = None, 대회: str | None = None
+    ) -> None:
         if not db.configured:
             await interaction.response.send_message(embed=error_embed("현재 데이터를 불러올 수 없습니다."), ephemeral=True)
             return
@@ -108,7 +111,7 @@ class MatchCommands(commands.Cog):
         day = (datetime.now(DISPLAY_TZ) + timedelta(days=offset)).replace(hour=0, minute=0, second=0, microsecond=0)
         try:
             async with db.session() as s:
-                listed = await repo.get_matches_between(s, day, day + timedelta(days=1))
+                listed = await repo.get_matches_between(s, day, day + timedelta(days=1), 대회)
         except Exception:
             log.exception("일정 조회 실패")
             await interaction.followup.send(embed=error_embed("현재 데이터를 불러올 수 없습니다. 잠시 후 다시 시도해주세요."))
@@ -117,13 +120,15 @@ class MatchCommands(commands.Cog):
         label = {-1: "어제", 0: "오늘", 1: "내일", 2: "모레"}[offset]
         date_label = f"{day.month}월 {day.day}일 ({_WEEKDAY[day.weekday()]})"
         footer = f"한국 시간 기준 · 출처: VLR.gg · {len(listed)}경기"
+        if 대회:
+            footer = f"{대회} · " + footer
         png = await build_schedule_card(f"{label}의 {{kind}}", date_label, listed, footer, date_label)
         if png is not None:
             await interaction.followup.send(file=discord.File(BytesIO(png), filename="schedule.png"))
             return
         embed = matches_embed(f"📅 {label}의 경기 일정", listed)
         if not listed:
-            embed.description = "이 날은 예정된 경기가 없습니다."
+            embed.description = f"이 날은 {f'{대회} ' if 대회 else ''}예정된 경기가 없습니다."
         await interaction.followup.send(embed=embed)
 
 

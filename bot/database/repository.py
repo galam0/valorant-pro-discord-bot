@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import case, delete, func, or_, select, text, update
+from sqlalchemy import and_, case, delete, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -818,11 +818,17 @@ async def get_upcoming_matches(session: AsyncSession, limit: int = 10) -> list[M
     return list(result.scalars())
 
 
-async def get_matches_between(session: AsyncSession, start: datetime, end: datetime) -> list[Match]:
-    """start 이상 end 미만에 시작하는 경기 (시간순). 진행 중인 경기가 날짜가 지나도 남도록 live는 별도로 포함."""
+async def get_matches_between(
+    session: AsyncSession, start: datetime, end: datetime, tournament: str | None = None
+) -> list[Match]:
+    """start 이상 end 미만에 시작하는 경기 (시간순). 진행 중인 경기가 날짜가 지나도 남도록 live는 별도로 포함.
+    tournament 가 있으면 그 대회(이름 일부 일치)의 경기만."""
+    cond = or_(Match.scheduled_at.between(start, end - timedelta(microseconds=1)), Match.status == "live")
+    if tournament:
+        cond = and_(cond, Match.tournament_name.ilike(f"%{tournament.strip()}%"))
     result = await session.execute(
         select(Match)
-        .where(or_(Match.scheduled_at.between(start, end - timedelta(microseconds=1)), Match.status == "live"))
+        .where(cond)
         .options(selectinload(Match.team1), selectinload(Match.team2))
         .order_by(Match.scheduled_at.asc().nulls_last())
     )

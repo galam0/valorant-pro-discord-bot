@@ -44,6 +44,7 @@ class _Entry:
 class _Index:
     teams: list[_Entry] = field(default_factory=list)
     players: list[_Entry] = field(default_factory=list)
+    schedule_events: list[_Entry] = field(default_factory=list)  # 최근·예정 경기가 있는 대회
     loaded_at: float = 0.0
 
 
@@ -56,12 +57,21 @@ async def _load() -> None:
 
     from bot.database.database import db
 
-    from bot.database.models import Player, Team, TeamAlias
+    from datetime import datetime, timedelta, timezone
+
+    from bot.database.models import Match, Player, Team, TeamAlias
 
     async with db.session() as s:
         teams = (await s.execute(select(Team.id, Team.name, Team.tag))).all()
         aliases = (await s.execute(select(TeamAlias.team_id, TeamAlias.alias))).all()
         players = (await s.execute(select(Player.nickname))).scalars().all()
+        now = datetime.now(timezone.utc)
+        names = (await s.execute(
+            select(Match.tournament_name).where(
+                Match.tournament_name.is_not(None),
+                Match.scheduled_at.between(now - timedelta(days=3), now + timedelta(days=7)),
+            ).distinct()
+        )).scalars().all()
     by_team: dict[int, list[str]] = {}
     for tid, alias in aliases:
         by_team.setdefault(tid, []).append(alias)
@@ -80,6 +90,7 @@ async def _load() -> None:
         p_entries.append(_Entry(nick, [normalize_key(nick)]))
     _index.teams = sorted(t_entries, key=lambda e: e.label.lower())
     _index.players = sorted(p_entries, key=lambda e: e.label.lower())
+    _index.schedule_events = sorted((_Entry(n, [normalize_key(n)]) for n in names), key=lambda e: e.label.lower())
     _index.loaded_at = time.monotonic()
     log.info("자동완성 목록 갱신: 팀 %d, 선수 %d", len(t_entries), len(p_entries))
 
@@ -138,3 +149,9 @@ async def event_autocomplete(interaction: discord.Interaction, current: str) -> 
     q = current.strip().lower()
     labels = [e for e in EVENT_SUGGESTIONS if q in e.lower()] if q else EVENT_SUGGESTIONS
     return _choices(labels[:MAX_CHOICES])
+
+
+async def schedule_event_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    """/일정 의 대회 선택 — 최근·예정 경기가 있는 대회만 보여 준다."""
+    _ensure_loaded()
+    return _choices(match(_index.schedule_events, current))
