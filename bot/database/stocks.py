@@ -112,3 +112,9 @@ async def team_logos(session: AsyncSession, vlr_ids: list[int]) -> dict[int, str
     """DB에 저장된 팀 로고 URL (VLR 팀 ID → URL)."""
     rows = await session.execute(select(Team.vlr_id, Team.logo_url).where(Team.vlr_id.in_(vlr_ids), Team.logo_url.is_not(None)))
     return {int(v): u for v, u in rows.all()}
+
+
+async def guild_holdings(session: AsyncSession, guild_id: int) -> list[StockHolding]:
+    """서버 전체의 보유 주식 (랭킹용)."""
+    rows = await session.execute(select(StockHolding).where(StockHolding.guild_id == guild_id, StockHolding.shares > 0))
+    return list(rows.scalars())

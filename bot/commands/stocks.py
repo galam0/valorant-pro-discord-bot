@@ -16,6 +16,7 @@ from bot.embeds.common import COLOR_INFO, COLOR_MAIN, COLOR_OK, error_embed, ts
 from bot.render import images
 from bot.render.base import render_enabled
 from bot.render.stock_card import render_stock_board
+from bot.render.stock_chart import render_stock_chart
 from bot.services import guild_settings
 from bot.services import stock_model as sm
 from bot.services import stock_service as ss
@@ -70,6 +71,22 @@ def portfolio_embed(rows: list[ss.Position], cash: int, name: str) -> discord.Em
                            f"평가 {p.value:,} VP ({sign}{abs(p.pnl):,} VP, {sign}{abs(p.pnl_pct):.1f}%)"))
     e.description = f"주식 평가액 **{total:,} VP** · 현금 {fmt(cash)}\n총 자산 **{fmt(total + cash)}**"
     e.set_footer(text="평가액은 수수료 전 금액이에요")
+    return e
+
+
+def ranking_embed(rows: list, names: dict[int, str]) -> discord.Embed:
+    e = discord.Embed(title="🏆 주식 투자자 순위", color=COLOR_MAIN)
+    if not rows:
+        e.description = "아직 주식을 가진 사람이 없어요. `/매수`로 첫 투자자가 되어 보세요!"
+        return e
+    medals = ["🥇", "🥈", "🥉"]
+    lines = []
+    for i, (uid, value, pnl, pct) in enumerate(rows[:10]):
+        sign = "+" if pnl >= 0 else "-"
+        lines.append(f"{medals[i] if i < 3 else f'`{i + 1}`'} **{names.get(uid, '알 수 없음')}** — 평가 {value:,} VP "
+                     f"({sign}{abs(pnl):,} VP · {sign}{abs(pct):.1f}%)")
+    e.description = "\n".join(lines)
+    e.set_footer(text="지금 가진 주식의 평가손익 기준 · 수수료 전 금액")
     return e
 
 
@@ -148,6 +165,39 @@ class StockCommands(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         rows, cash = await ss.portfolio(interaction.guild_id, interaction.user.id)
         await interaction.followup.send(embed=portfolio_embed(rows, cash, interaction.user.display_name), ephemeral=True)
+
+    @app_commands.command(name="주식순위", description="이 서버에서 주식으로 가장 많이 번 사람을 봅니다.")
+    async def stock_rank(self, interaction: discord.Interaction) -> None:
+        if not await self._guard(interaction):
+            return
+        await interaction.response.defer()
+        rows = await ss.ranking(interaction.guild_id)
+        names: dict[int, str] = {}
+        for uid, *_ in rows[:10]:
+            m = interaction.guild.get_member(uid) if interaction.guild else None
+            if m is None:
+                try:
+                    m = await interaction.guild.fetch_member(uid)
+                except discord.HTTPException:
+                    m = None
+            names[uid] = m.display_name if m else "알 수 없음"
+        await interaction.followup.send(embed=ranking_embed(rows, names))
+
+    @app_commands.command(name="주식추이", description="주가 변동 그래프를 봅니다. (종목을 안 고르면 전체 비교)")
+    @app_commands.describe(종목="한 팀만 보기 (선택)")
+    @app_commands.choices(종목=SYMBOLS)
+    async def stock_chart(self, interaction: discord.Interaction, 종목: app_commands.Choice[str] | None = None) -> None:
+        if not await self._guard(interaction):
+            return
+        await interaction.response.defer()
+        series = await ss.history(종목.value if 종목 else None)
+        if not render_enabled():
+            lines = [f"**{n}** {v[0]:,} → {v[-1]:,} VP" for n, v in series.items() if v]
+            await interaction.followup.send(embed=discord.Embed(title="📊 주가 추이", description="\n".join(lines) or "기록이 없어요.", color=COLOR_INFO))
+            return
+        title = f"{종목.name.split(' · ')[0]} 주가" if 종목 else "전체 종목 등락률"
+        png = await asyncio.to_thread(render_stock_chart, series, title, single=종목 is not None)
+        await interaction.followup.send(file=discord.File(BytesIO(png), filename="stock_chart.png"))
 
 
 async def setup(bot: commands.Bot) -> None:

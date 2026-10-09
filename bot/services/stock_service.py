@@ -112,6 +112,25 @@ async def portfolio(guild_id: int, user_id: int) -> tuple[list[Position], int]:
     return out, cash
 
 
+async def ranking(guild_id: int) -> list[tuple[int, int, int, float]]:
+    """서버 투자자 순위: [(유저, 평가액, 평가손익, 수익률%)] (평가손익이 큰 순)."""
+    async with db.session() as s:
+        await stocks.ensure_stocks(s, sm.STOCKS)
+        prices = await stocks.get_prices(s)
+        rows = await stocks.guild_holdings(s, guild_id)
+        await s.commit()
+    return sm.rank_investors([(h.user_id, h.symbol, int(h.shares), int(h.cost)) for h in rows], prices)
+
+
+async def history(symbol: str | None, limit: int = 48) -> dict[str, list[int]]:
+    """차트용 가격 기록 {종목 이름: 가격들}. symbol 이 없으면 전 종목."""
+    defs = [_check_symbol(symbol)] if symbol else list(sm.STOCKS)
+    async with db.session() as s:
+        await stocks.ensure_stocks(s, sm.STOCKS)
+        await s.commit()
+        return {d.name: await stocks.recent_prices(s, d.symbol, limit) for d in defs}
+
+
 # ---------------------------------------------------------------------------
 # 가격 변동 (scheduler 가 매시 정각에 부른다)
 # ---------------------------------------------------------------------------

@@ -26,6 +26,7 @@ from bot.services import match_service, prediction_service, stock_service, team_
 log = logging.getLogger("valobot.scheduler")
 
 MAX_LIVE_DETAILS = 6          # 한 번에 상세를 저장할 진행 중 경기 수 (요청 간격 2초 × 6 = 12초)
+ALERT_BEFORE_MIN = 30         # 경기 시작 이 분 전에 알림 채널에 알린다
 _live_ids: set[int] = set()   # 직전 확인 때 진행 중이던 경기 (끝났는지 알아내기 위해)
 
 try:  # 패키지가 없어도 봇은 떠야 한다
@@ -36,6 +37,8 @@ except ImportError:  # pragma: no cover
     CronTrigger = None  # type: ignore[assignment,misc]
 
 _scheduler: "AsyncIOScheduler | None" = None
+broadcaster = None            # async (embed) -> None   (main 에서 연결, 모든 서버의 알림 채널)
+_alerted: set[int] = set()    # 알림을 예약했거나 보낸 경기 (같은 경기를 두 번 알리지 않게)
 
 
 def enabled() -> bool:
@@ -52,8 +55,47 @@ async def job_matches() -> None:
         count = await match_service.refresh_matches(include_results=True)
         log.info("[자동] 경기 목록 갱신: %d개", count)
         await _settle_sweep()
+        await _schedule_alerts()
     except Exception as exc:
         log.warning("[자동] 경기 목록 갱신 실패: %s: %s", type(exc).__name__, exc)
+
+
+async def _schedule_alerts() -> None:
+    """앞으로 1시간 안에 시작하는 경기마다 '시작 30분 전' 알림을 예약한다 (경기 목록 갱신 직후라 DB는 깨어 있음)."""
+    if broadcaster is None or _scheduler is None:
+        return
+    from datetime import datetime, timedelta, timezone
+
+    from bot.database import repository as repo   # (import 시점 비용·테스트 편의를 위해 안에서)
+
+    now = datetime.now(timezone.utc)
+    try:
+        async with db.session() as s:
+            rows = await repo.get_matches_between(s, now, now + timedelta(minutes=70))
+    except Exception as exc:
+        log.warning("[자동] 경기 알림 예약 실패: %s: %s", type(exc).__name__, exc)
+        return
+    for m in rows:
+        if m.status != "upcoming" or m.vlr_id in _alerted or m.scheduled_at is None:
+            continue
+        if prediction_service.is_tbd(m.team1_name) or prediction_service.is_tbd(m.team2_name):
+            continue
+        fire = max(m.scheduled_at - timedelta(minutes=ALERT_BEFORE_MIN), now + timedelta(seconds=5))
+        if fire >= m.scheduled_at - timedelta(minutes=10):     # 이미 예측 마감이 가까우면 알리지 않는다
+            continue
+        _alerted.add(m.vlr_id)
+        _scheduler.add_job(_send_alert, "date", run_date=fire, id=f"alert-{m.vlr_id}", replace_existing=True,
+                           args=[m.team1_name, m.team2_name, m.tournament_name, m.scheduled_at], misfire_grace_time=300)
+        log.info("[자동] 경기 알림 예약: %s vs %s (%s)", m.team1_name, m.team2_name, fire.isoformat(timespec="minutes"))
+
+
+async def _send_alert(team1: str, team2: str, tournament: str | None, scheduled_at) -> None:
+    from bot.embeds.prediction import match_alert_embed
+
+    try:
+        await broadcaster(match_alert_embed(team1, team2, tournament, scheduled_at))
+    except Exception as exc:
+        log.warning("[자동] 경기 알림 전송 실패: %s: %s", type(exc).__name__, exc)
 
 
 async def _settle_sweep() -> None:

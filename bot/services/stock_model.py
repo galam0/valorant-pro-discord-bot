@@ -132,3 +132,19 @@ def next_tick_at(now: datetime | None = None) -> datetime:
     """다음 주가 변동 시각 (매시 정각, 한국 시간)."""
     now = (now or datetime.now(KST)).astimezone(KST)
     return now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+
+
+def rank_investors(holdings: list[tuple[int, str, int, int]], prices: dict[str, int]) -> list[tuple[int, int, int, float]]:
+    """(유저, 종목, 주수, 총 매수원가) 목록 → [(유저, 평가액, 평가손익, 수익률%)] 를 평가손익이 큰 순으로.
+
+    아는 종목만 계산한다. 평가액은 수수료 전 금액이고 수익률은 매수원가 기준이다.
+    """
+    agg: dict[int, list[int]] = {}
+    for uid, sym, shares, cost in holdings:
+        if sym not in BY_SYMBOL or shares <= 0:
+            continue
+        a = agg.setdefault(uid, [0, 0])
+        a[0] += shares * prices.get(sym, BY_SYMBOL[sym].base)
+        a[1] += cost
+    out = [(uid, v, v - c, ((v - c) / c * 100) if c > 0 else 0.0) for uid, (v, c) in agg.items()]
+    return sorted(out, key=lambda r: (-r[2], r[0]))

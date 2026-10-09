@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import discord
 
 from bot.embeds.common import COLOR_INFO, COLOR_MAIN, COLOR_OK, COLOR_WARN, ts
@@ -105,6 +107,14 @@ def others_predictions_embed(match, preds: list) -> discord.Embed:
             lines.append(f"… 외 {len(rows) - 12}명")
         embed.add_field(name=KIND_KO[kind], value="\n".join(lines)[:1024], inline=False)
     embed.set_footer(text="건 VP가 많은 순서로 보여줘요")
+    return embed
+
+
+def match_alert_embed(team1: str, team2: str, tournament: str | None, scheduled_at) -> discord.Embed:
+    """경기 시작 알림 (시작 30분 전)."""
+    embed = discord.Embed(title=f"⏰ 곧 시작! {team1} vs {team2}", color=COLOR_MAIN)
+    embed.description = f"{tournament + chr(10) if tournament else ''}시작 {ts(scheduled_at, 't')} ({ts(scheduled_at, 'R')})"
+    embed.add_field(name="🎯 예측", value=f"`/예측` 으로 참여하세요. 시작 {om.LOCK_MINUTES}분 전({ts(scheduled_at - timedelta(minutes=om.LOCK_MINUTES), 't')})에 마감돼요.", inline=False)
     return embed
 
 

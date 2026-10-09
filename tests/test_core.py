@@ -785,3 +785,79 @@ class StockModelTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StockRankingTest(unittest.TestCase):
+    def test_rank_by_pnl(self):
+        from bot.services import stock_model as sm
+
+        base = sm.STOCKS[0]
+        prices = {base.symbol: 1000}
+        # 유저1: 10주를 평균 800에 → +2000 / 유저2: 10주를 1200에 → -2000 / 유저3: 모르는 종목은 무시
+        rows = [(1, base.symbol, 10, 8000), (2, base.symbol, 10, 12000), (3, "ZZZ", 5, 100), (4, base.symbol, 0, 0)]
+        ranked = sm.rank_investors(rows, prices)
+        self.assertEqual([r[0] for r in ranked], [1, 2])
+        self.assertEqual(ranked[0][1:3], (10000, 2000))
+        self.assertAlmostEqual(ranked[0][3], 25.0)
+        self.assertEqual(ranked[1][2], -2000)
+
+    def test_chart_renders(self):
+        from bot.render.stock_chart import render_stock_chart
+
+        for single in (True, False):
+            png = render_stock_chart({"젠지": [1000, 1020, 990, 1050], "T1": [1200, 1180, 1250]}, "t", single=single)
+            self.assertTrue(png.startswith(b"\x89PNG"))
+        self.assertTrue(render_stock_chart({"젠지": [1000]}, "t", single=True).startswith(b"\x89PNG"))
+
+
+class PrewarmTest(unittest.TestCase):
+    def test_jobs_cover_coin_dice_slot(self):
+        from bot.render import game_anim
+
+        jobs = game_anim.prewarm_jobs()
+        v = game_anim.VARIANTS
+        self.assertEqual(len(jobs), 2 * v + 6 * v + 5 * v)
+        jobs[0]()  # 실제로 만들어져 캐시에 들어간다
+        before = game_anim._coin_cached.cache_info().hits
+        game_anim._coin_cached("앞", 0)
+        self.assertEqual(game_anim._coin_cached.cache_info().hits, before + 1)
+
+
+class MatchAlertTest(unittest.TestCase):
+    def test_schedules_once_and_skips_tbd(self):
+        from datetime import datetime, timedelta, timezone
+
+        scheduler = _import_scheduler()
+        now = datetime.now(timezone.utc)
+
+        def m(i, mins, t1="A", t2="B", status="upcoming"):
+            return NS(vlr_id=i, status=status, scheduled_at=now + timedelta(minutes=mins), team1_name=t1, team2_name=t2,
+                      tournament_name="T")
+
+        rows = [m(1, 50), m(2, 50, t2="TBD"), m(3, 5), m(4, 50, status="live"), m(5, 20)]
+        added = []
+        scheduler._scheduler = NS(add_job=lambda *a, **k: added.append((k["id"], k["run_date"])))
+        scheduler.broadcaster = AsyncMock()
+        scheduler.prediction_service = NS(is_tbd=lambda n: not n or n.strip().upper() == "TBD")
+        scheduler._alerted = set()
+        import sys
+        import bot.database as dbpkg
+
+        fake_repo = NS(get_matches_between=AsyncMock(return_value=rows))
+        sys.modules["bot.database.repository"] = fake_repo
+        dbpkg.repository = fake_repo
+
+        class _Ctx:
+            async def __aenter__(self): return None
+            async def __aexit__(self, *a): return False
+
+        scheduler.db = NS(session=lambda: _Ctx())
+        asyncio.run(scheduler._schedule_alerts())
+        asyncio.run(scheduler._schedule_alerts())   # 두 번째에는 새로 예약하지 않는다
+        ids = [i for i, _ in added]
+        self.assertEqual(ids, ["alert-1", "alert-5"])
+        self.assertAlmostEqual((added[0][1] - (rows[0].scheduled_at - timedelta(minutes=30))).total_seconds(), 0, delta=1)
+        self.assertGreater(added[1][1], now)   # 이미 30분 안이면 곧바로(몇 초 뒤)
+        scheduler._scheduler = None
+        sys.modules.pop("bot.database.repository", None)
+        del dbpkg.repository

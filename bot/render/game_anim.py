@@ -546,3 +546,11 @@ def dice_gif(result: int) -> bytes:
 
 def slot_gif(reels: list[str]) -> bytes:
     return _slot_cached(tuple(reels), random.randrange(VARIANTS))
+
+
+def prewarm_jobs() -> list:
+    """미리 만들어 둘 GIF 목록 (캐시에 채움). 동전·주사위는 전부, 슬롯은 잭팟(세 개 같음)만 — 나머지 조합은 너무 많다."""
+    jobs = [lambda r=r, v=v: _coin_cached(r, v) for r in ("앞", "뒤") for v in range(VARIANTS)]
+    jobs += [lambda n=n, v=v: _dice_cached(n, v) for n in range(1, 7) for v in range(VARIANTS)]
+    jobs += [lambda s=s, v=v: _slot_cached((s, s, s), v) for s in SYMBOL_NAMES for v in range(VARIANTS)]
+    return jobs
