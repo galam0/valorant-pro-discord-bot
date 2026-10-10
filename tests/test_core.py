@@ -931,14 +931,15 @@ class DuplicateBundleTest(unittest.TestCase):
         themes = [{"uuid": "t1", "displayName": "RGX 컬렉션"}, {"uuid": "t2", "displayName": "RGX 2.0 컬렉션"}]
         return ss.parse_catalog(weapons, [], themes, bundles)
 
-    def test_version_in_text(self):
-        cat = self._parse([{"uuid": "b1", "displayName": "RGX"}, {"uuid": "b2", "displayName": "RGX", "extraDescription": "RGX 2.0 판"}])
-        self.assertEqual([[s.uuid for s in b.skins] for b in cat.bundles], [["a"], ["b"]])
-        self.assertEqual(len({b.label for b in cat.bundles}), 2)
+    def test_same_name_keeps_one(self):
+        cat = self._parse([{"uuid": "b1", "displayName": "RGX"}, {"uuid": "b2", "displayName": "RGX", "extraDescription": "RGX 2.0 판"},
+                           {"uuid": "b3", "displayName": "RGX"}, {"uuid": "b4", "displayName": "프라임"}])
+        self.assertEqual([b.uuid for b in cat.bundles], ["b1", "b4"])      # 스킨 수가 같으면 버전 표기 없는 원본, 먼저 나온 것
+        self.assertEqual([s.uuid for s in cat.bundles[0].skins], ["a"])
 
-    def test_numbering_fallback(self):
-        cat = self._parse([{"uuid": "b1", "displayName": "RGX"}, {"uuid": "b2", "displayName": "RGX"}, {"uuid": "b3", "displayName": "RGX"}])
-        self.assertEqual([b.label for b in cat.bundles], ["RGX (1)", "RGX (2)", "RGX (3)"])
+    def test_prefers_more_skins(self):
+        cat = self._parse([{"uuid": "b1", "displayName": "없는 컬렉션"}, {"uuid": "b2", "displayName": "없는 컬렉션"}])
+        self.assertEqual([b.uuid for b in cat.bundles], ["b1"])
 
 
 class TierEmojiNameTest(unittest.TestCase):

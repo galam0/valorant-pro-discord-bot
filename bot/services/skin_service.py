@@ -174,22 +174,14 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
         versions[bundle.uuid] = ver
         out.append(bundle)
 
-    groups: dict[str, list[Bundle]] = {}
+    # 이름이 같은 세트(2.0·3.0 판 등)는 하나만 남긴다: 스킨이 가장 많은 것 → 버전 표기가 없는 원본 → 먼저 나온 것
+    best: dict[str, Bundle] = {}
     for b in out:
-        groups.setdefault(key(b.name), []).append(b)
-    for g in groups.values():
-        if len(g) < 2:
-            continue
-        vers = [versions[b.uuid] for b in g]
-        subs = [b.subtext for b in g]
-        if all(vers) and len(set(vers)) == len(g):
-            tags = vers
-        elif all(subs) and len(set(subs)) == len(g):
-            tags = subs
-        else:
-            tags = [str(i) for i in range(1, len(g) + 1)]
-        for b, tag in zip(g, tags):
-            b.label = f"{b.name} ({tag})"
+        k = key(b.name)
+        cur = best.get(k)
+        if cur is None or (len(b.skins), b.version is None) > (len(cur.skins), cur.version is None):
+            best[k] = b
+    out = [b for b in out if best[key(b.name)] is b]
     return Catalog(skins, out)
 
 
