@@ -25,7 +25,6 @@ EXTENSIONS = (
     "bot.commands.profile",
     "bot.commands.stocks",
     "bot.commands.skins",
-    "bot.commands.valorant_shop",
     "bot.commands.settings",
     "bot.commands.admin",
 )
