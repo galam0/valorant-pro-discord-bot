@@ -22,6 +22,15 @@ TTL = 6 * 3600
 STANDARD_THEME = "5a629df4-4765-0214-bd40-fbb96542941f"   # 기본 스킨 묶음 (목록에서 제외)
 _RANDOM = re.compile(r"random|무작위", re.I)
 _BUNDLE_SUFFIX = re.compile(r"\s*(컬렉션|번들|세트|collection|bundle|set)\s*$", re.I)
+# 등급별 일반 상점 가격 (VP, 총기 기준). 공개 API에는 가격이 없어서 등급으로 추정한다 — 근접 무기·특별 판매는 다를 수 있다.
+TIER_PRICE = {
+    "12683d76-48d7-84a3-4e09-6985794f0445": 875,    # 셀렉트
+    "0cebb8be-46d7-c12a-d306-e9907bfc5a25": 1275,   # 딜럭스
+    "60bca009-4182-7998-dee7-b8a2558dc369": 1775,   # 프리미엄
+    "411e4a55-4e59-7757-41f0-86a53f101bb5": 2175,   # 얼티밋
+    "e046854e-406c-37f4-6607-19a9ba8426fc": 2475,   # 익스클루시브
+}
+Variant = tuple  # (색상 이름, 이미지 URL, 영상 URL)
 
 
 @dataclass
@@ -35,7 +44,10 @@ class Skin:
     theme: str | None
     chromas: int
     levels: int
-    variants: list[tuple[str, str | None]] = field(default_factory=list)   # (색상 이름, 이미지) — 첫 번째가 기본
+    variants: list[tuple] = field(default_factory=list)   # (색상 이름, 이미지, 영상) — 첫 번째가 기본
+    tier_icon: str | None = None
+    price: int | None = None        # 등급 기준 가격 (VP). 근접 무기·등급 없음은 None
+    melee: bool = False
 
 
 @dataclass
@@ -87,14 +99,27 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
             icon = s.get("displayIcon") or (levels[0].get("displayIcon") if levels else None) \
                 or next((c.get("fullRender") for c in (s.get("chromas") or []) if c.get("fullRender")), None)
             tier = tier_by.get(s.get("contentTierUuid")) or {}
-            variants = [("기본", icon)]
+            melee = "Melee" in str(w.get("category") or "")
+            skin_video = next((lv.get("streamedVideo") for lv in reversed(levels) if lv.get("streamedVideo")), None)
+
+            # 색상 변형: 이름이 스킨 이름과 같은 항목은 '기본' 색이므로 따로 세지 않고 기본 하나로 합친다
+            base_img, base_video = icon, skin_video
+            extras: list[tuple] = []
             for c in s.get("chromas") or []:
                 img = c.get("fullRender") or c.get("displayIcon")
-                if img and img != icon:
-                    variants.append((_chroma_label(c.get("displayName") or "", name), img))
+                if not img:
+                    continue
+                cname = (c.get("displayName") or "").strip()
+                if cname == name.strip():
+                    base_img = img
+                    base_video = c.get("streamedVideo") or base_video
+                elif img != base_img and all(img != e[1] for e in extras):
+                    extras.append((_chroma_label(cname, name), img, c.get("streamedVideo") or skin_video))
+            variants = [("기본", base_img, base_video)] + extras
+            price = None if melee else TIER_PRICE.get(s.get("contentTierUuid"))
             skins.append(Skin(s["uuid"], name, w.get("displayName") or "", tier.get("displayName"),
-                              _color(tier.get("highlightColor")), icon, theme_name.get(s.get("themeUuid")),
-                              len(s.get("chromas") or []), len(levels), variants))
+                              _color(tier.get("highlightColor")), base_img, theme_name.get(s.get("themeUuid")),
+                              len(extras), len(levels), variants, tier.get("displayIcon"), price, melee))
 
     by_theme: dict[str, list[Skin]] = {}
     for sk in skins:
@@ -111,6 +136,17 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
         out.append(Bundle(b["uuid"], name, b.get("displayNameSubText"), b.get("extraDescription") or b.get("description"),
                           b.get("displayIcon") or b.get("displayIcon2") or b.get("verticalPromoImage"), members))
     return Catalog(skins, out)
+
+
+def price_text(s: Skin) -> str | None:
+    return f"{s.price:,} VP" if s.price else None
+
+
+def trailer_url(bundle_name: str) -> str:
+    """한국 공식 트레일러를 찾는 유튜브 검색 링크 (번들마다 트레일러 주소를 알려 주는 공개 데이터가 없다)."""
+    from urllib.parse import quote_plus
+
+    return "https://www.youtube.com/results?search_query=" + quote_plus(f"발로란트 코리아 {bundle_name} 트레일러")
 
 
 def search_skins(cat: Catalog, query: str, limit: int = 25) -> list[Skin]:

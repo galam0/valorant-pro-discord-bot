@@ -172,6 +172,8 @@ class ValorantBot(commands.Bot):
         asyncio.create_task(self._prewarm_games())
         from bot.services import skin_service
         skin_service.cached()   # 스킨 목록을 미리 불러오기 시작 (자동완성이 바로 뜨도록)
+        from bot.services import tier_emoji
+        asyncio.create_task(tier_emoji.ensure(self))   # 등급 아이콘 이모지 준비 (뒤에서)
         ok = 0
         for guild in self.guilds:
             try:

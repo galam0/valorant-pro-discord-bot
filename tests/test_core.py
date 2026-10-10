@@ -870,15 +870,16 @@ class SkinCatalogTest(unittest.TestCase):
         weapons = [{"displayName": "밴달", "skins": [
             {"uuid": "s0", "displayName": "기본 밴달", "themeUuid": ss.STANDARD_THEME, "contentTierUuid": None,
              "displayIcon": "u0", "levels": [], "chromas": []},
-            {"uuid": "s1", "displayName": "리버 밴달", "themeUuid": "t1", "contentTierUuid": "c1", "displayIcon": None,
-             "levels": [{"displayIcon": "u1"}] * 4,
-             "chromas": [{"displayName": "리버 밴달 (보라색)", "fullRender": "c1"}, {"displayName": "리버 밴달 (초록색)", "displayIcon": "c2"},
-                         {"displayName": "x", "fullRender": "u1"}, {}]},
-            {"uuid": "s2", "displayName": "무작위 선호 스킨", "themeUuid": "t1", "contentTierUuid": "c1", "levels": [], "chromas": []}]},
-            {"displayName": "근접 무기", "skins": [
-                {"uuid": "s3", "displayName": "리버 단검", "themeUuid": "t1", "contentTierUuid": "c1",
+            {"uuid": "s1", "displayName": "리버 밴달", "themeUuid": "t1", "contentTierUuid": "411e4a55-4e59-7757-41f0-86a53f101bb5", "displayIcon": None,
+             "levels": [{"displayIcon": "u1"}] * 3 + [{"displayIcon": "u1", "streamedVideo": "vid"}],
+             "chromas": [{"displayName": "리버 밴달", "fullRender": "cd"},
+                         {"displayName": "리버 밴달 (보라색)", "fullRender": "c1"}, {"displayName": "리버 밴달 (초록색)", "displayIcon": "c2", "streamedVideo": "v2"},
+                         {"displayName": "x", "fullRender": "cd"}, {}]},
+            {"uuid": "s2", "displayName": "무작위 선호 스킨", "themeUuid": "t1", "contentTierUuid": "411e4a55-4e59-7757-41f0-86a53f101bb5", "levels": [], "chromas": []}]},
+            {"displayName": "근접 무기", "category": "EEquippableCategory::Melee", "skins": [
+                {"uuid": "s3", "displayName": "리버 단검", "themeUuid": "t1", "contentTierUuid": "411e4a55-4e59-7757-41f0-86a53f101bb5",
                  "displayIcon": "u3", "levels": [{}], "chromas": []}]}]
-        tiers = [{"uuid": "c1", "displayName": "얼티밋 에디션", "highlightColor": "f5955cff"}]
+        tiers = [{"uuid": "411e4a55-4e59-7757-41f0-86a53f101bb5", "displayName": "얼티밋 에디션", "highlightColor": "f5955cff", "displayIcon": "ti"}]
         themes = [{"uuid": "t1", "displayName": "리버 컬렉션"}]
         bundles = [{"uuid": "b1", "displayName": "리버", "displayNameSubText": "컬렉션", "description": "d", "displayIcon": "bi"},
                    {"uuid": "b2", "displayName": "없는 번들", "displayIcon": None, "displayIcon2": "x"}]
@@ -888,8 +889,12 @@ class SkinCatalogTest(unittest.TestCase):
         ss, cat = self._cat()
         self.assertEqual([s.uuid for s in cat.skins], ["s1", "s3"])      # 기본/무작위 스킨 제외
         s = cat.skins[0]
-        self.assertEqual((s.icon, s.tier, s.color, s.chromas, s.levels), ("u1", "얼티밋 에디션", 0xF5955C, 4, 4))
-        self.assertEqual(s.variants, [("기본", "u1"), ("보라색", "c1"), ("초록색", "c2")])   # 같은 이미지·빈 이미지는 제외
+        self.assertEqual((s.icon, s.tier, s.color, s.chromas, s.levels), ("cd", "얼티밋 에디션", 0xF5955C, 2, 4))
+        # 기본 색(스킨 이름과 같은 항목)은 하나로 합치고, 같은 이미지·빈 이미지는 제외. 영상은 없으면 스킨 영상으로
+        self.assertEqual(s.variants, [("기본", "cd", "vid"), ("보라색", "c1", "vid"), ("초록색", "c2", "v2")])
+        self.assertEqual((s.price, s.tier_icon, ss.price_text(s)), (2175, "ti", "2,175 VP"))
+        self.assertIsNone(cat.skins[1].price)                           # 근접 무기는 가격 추정 안 함
+        self.assertIn("youtube.com/results", ss.trailer_url("리버"))
         self.assertEqual([x.uuid for x in cat.bundles[0].skins], ["s1", "s3"])   # '리버 컬렉션' 테마 = '리버' 번들
         self.assertEqual(cat.bundles[1].skins, [])
         self.assertEqual(cat.bundles[1].icon, "x")
@@ -899,9 +904,17 @@ class SkinCatalogTest(unittest.TestCase):
         self.assertEqual([s.uuid for s in ss.search_skins(cat, "리버 밴달")], ["s1"])
         self.assertEqual([s.uuid for s in ss.search_skins(cat, "밴달 리버")], ["s1"])
         self.assertEqual(len(ss.search_skins(cat, "리버")), 2)
-        self.assertEqual(cat.skins[0].variants[0], ("기본", "u1"))
+        self.assertEqual(cat.skins[0].variants[0][:2], ("기본", "cd"))
         self.assertEqual(ss.search_skins(cat, "없음없음"), [])
         self.assertEqual([b.uuid for b in ss.search_bundles(cat, "리")], ["b1"])
+
+
+class TierEmojiNameTest(unittest.TestCase):
+    def test_name(self):
+        from bot.services.tier_emoji import emoji_name
+
+        n = emoji_name("https://media.valorant-api.com/contenttiers/411e4a55-4e59-7757-41f0-86a53f101bb5/displayicon.png")
+        self.assertEqual(n, "tier_411e4a55")
 
 
 class PickFansTest(unittest.TestCase):
