@@ -943,8 +943,8 @@ class DuplicateBundleTest(unittest.TestCase):
     def test_excluded_names(self):
         cat = self._parse([{"uuid": "x1", "displayName": "RGX 역습"}, {"uuid": "x2", "displayName": "VCT 클래식 RGX"},
                            {"uuid": "x3", "displayName": "RGX 팀 캡슐"}, {"uuid": "x4", "displayName": "RGX", "displayNameSubText": "자선 판매"},
-                           {"uuid": "ok", "displayName": "RGX"}])
-        self.assertEqual([b.uuid for b in cat.bundles], ["ok"])
+                           {"uuid": "ok", "displayName": "RGX"}, {"uuid": "ok2", "displayName": "VCT 2026 RGX 2.0"}])
+        self.assertEqual([b.uuid for b in cat.bundles], ["ok", "ok2"])     # VCT 연도 칼 세트는 남기고 클래식만 제외
 
 
 class TierEmojiNameTest(unittest.TestCase):

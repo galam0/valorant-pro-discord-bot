@@ -31,7 +31,7 @@ TIER_PRICE = {
     "e046854e-406c-37f4-6607-19a9ba8426fc": 2475,   # 익스클루시브
 }
 # 세트 목록에서 뺄 것: 역습 세트, VCT 클래식·팀 캡슐, 자선 세트
-EXCLUDED_BUNDLE = re.compile(r"역습|캡슐|자선|vct|charity|capsule|counter\s*/?\s*attack", re.I)
+EXCLUDED_BUNDLE = re.compile(r"역습|캡슐|자선|vct.*(클래식|classic)|(클래식|classic).*vct|charity|capsule|counter\s*/?\s*attack", re.I)
 Variant = tuple  # (색상 이름, 이미지 URL, 영상 URL)
 
 
