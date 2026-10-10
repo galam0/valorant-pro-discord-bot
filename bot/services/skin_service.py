@@ -473,9 +473,17 @@ async def fetch_icon(b: Bundle, big: bool = False):
 
     for u in icon_urls(b):
         img = await (images.fetch_big(u, 700, BIG_IMAGE) if big else images.fetch_image(u, BIG_IMAGE))
-        if img is not None:
+        if img is not None and not is_blank(img):
             return img
     return None
+
+
+def is_blank(img) -> bool:
+    """완전히 투명한 그림인지 (2023·2024 챔피언스 세트의 displayIcon2 가 빈 그림이라 다음 후보로 넘긴다)."""
+    try:
+        return "A" in img.getbands() and img.getchannel("A").getbbox() is None
+    except Exception:
+        return False
 
 
 async def warm_icons(cat: Catalog, first: int = 0) -> None:
@@ -488,19 +496,10 @@ async def warm_icons(cat: Catalog, first: int = 0) -> None:
     t0 = time.monotonic()
     ok = 0
     try:
-        notes = []
         for b in order:
-            img = await fetch_icon(b)
-            if img is not None:
+            if await fetch_icon(b) is not None:
                 ok += 1
-                if "챔피언스" in b.name:
-                    box = img.getbbox() if img.mode != "RGBA" else img.getchannel("A").getbbox()
-                    notes.append(f"{b.name}: {img.size} {img.mode} 보이는영역={box} 후보={[u.rsplit('/', 2)[-2][:8] + '/' + u.rsplit('/', 1)[-1] for u in icon_urls(b)]}")
-            else:
-                notes.append(f"{b.name}: 그림 없음 후보={icon_urls(b)}")
             await asyncio.sleep(0.2)
-        if notes:
-            log.info("세트 그림 진단: %s", " | ".join(notes))
     except Exception as exc:
         log.warning("세트 그림 미리 받기 실패: %s: %s", type(exc).__name__, exc)
         return

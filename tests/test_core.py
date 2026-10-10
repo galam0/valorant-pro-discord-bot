@@ -927,6 +927,13 @@ class SkinCatalogTest(unittest.TestCase):
         self.assertEqual(got, {"k": (2375, False, False), "c": (2675, False, False),
                                "v": (None, False, True), "z": (2175, True, False)})
 
+    def test_blank_set_image_is_skipped(self):
+        from PIL import Image
+        from bot.services import skin_service as ss
+        self.assertTrue(ss.is_blank(Image.new("RGBA", (4, 4), (0, 0, 0, 0))))
+        self.assertFalse(ss.is_blank(Image.new("RGBA", (4, 4), (9, 9, 9, 255))))
+        self.assertFalse(ss.is_blank(Image.new("RGB", (4, 4))))
+
     def test_melee_and_exclusive_prices(self):
         from bot.services import skin_service as ss
         self.assertEqual(ss.skin_price(ss.PREMIUM, True, "Reaver Knife"), (3550, False))
