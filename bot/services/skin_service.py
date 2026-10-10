@@ -56,6 +56,8 @@ def _norm_en(name: str) -> str:
 
 MELEE_PRICE = {_norm_en(n): price for price, names in MELEE_PRICE_EN.items() for n in names.split("; ")}
 # 세트 목록에서 뺄 것: 역습 세트, VCT 클래식·팀 캡슐, 자선 세트
+# 제외 규칙에 걸려도 남길 것: 해마다 나오는 VCT 시즌 세트(칼 포함), VCT LOCK//IN
+KEEP_BUNDLE = re.compile(r"^\s*(20\d\d\s*vct\s*시즌|vct\s*20\d\d\s*season|vct\s*lock\s*//\s*in)\s*$", re.I)
 EXCLUDED_BUNDLE = re.compile(r"역습|캡슐|자선|vct.*(클래식|classic)|(클래식|classic).*vct|charity|capsule|counter\s*/?\s*attack", re.I)
 Variant = tuple  # (색상 이름, 이미지 URL, 영상 URL)
 
@@ -232,7 +234,7 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
         name = b.get("displayName") or ""
         if not name:
             continue
-        if EXCLUDED_BUNDLE.search(f"{name} {b.get('displayNameSubText') or ''}"):
+        if not KEEP_BUNDLE.search(name) and EXCLUDED_BUNDLE.search(f"{name} {b.get('displayNameSubText') or ''}"):
             dropped.append((name, "제외 규칙"))
             continue
         bk = key(_BUNDLE_SUFFIX.sub("", name))
@@ -383,6 +385,11 @@ async def load(force: bool = False) -> Catalog:
         melee = [s for s in cat.skins if s.melee and s.price]
         log.info("근접 무기 가격: 가격표 %d개 · 어림값 %d개 (어림: %s)", sum(not s.approx for s in melee),
                  sum(s.approx for s in melee), ", ".join(s.name for s in melee if s.approx))
+        excl: dict[str, list[str]] = {}
+        for s in cat.skins:
+            if not s.melee and s.price and s.approx:
+                excl.setdefault(s.theme or "?", []).append(s.name)
+        log.info("익스클루시브 총기 컬렉션 %d개: %s", len(excl), " | ".join(f"{k}[{len(v)}]: {v[0]}" for k, v in excl.items()))
         log.info("목록에 있는 세트 %d개: %s", len(cat.bundles), ", ".join(f"{b.name}[{len(b.skins)}]" for b in cat.bundles))
         if cat.dropped:
             log.info("목록에서 빠진 세트 %d개: %s", len(cat.dropped), ", ".join(f"{n}({r})" for n, r in cat.dropped))
