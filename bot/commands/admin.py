@@ -333,6 +333,32 @@ class AdminGroup(app_commands.Group, name="관리", description="관리자 전�
             embed=discord.Embed(title="✅ 경기 갱신 완료", description=f"경기 {count}개를 저장했습니다.", color=COLOR_OK)
         )
 
+    @app_commands.command(name="세트진단", description="이름이 같은 세트가 어떻게 구분되는지 원본 값을 봅니다.")
+    @app_commands.describe(이름="세트 이름 일부 (예: rgx)")
+    @app_commands.checks.cooldown(1, 5)
+    async def bundle_debug(self, interaction: discord.Interaction, 이름: str) -> None:
+        from bot.services import skin_service as ss
+
+        await interaction.response.defer(ephemeral=True)
+        try:
+            cat = await ss.load()
+        except Exception as exc:
+            await interaction.followup.send(f"스킨 목록을 불러오지 못했어요: {type(exc).__name__}", ephemeral=True)
+            return
+        q = ss.key(이름)
+        hits = [b for b in cat.bundles if q and q in ss.key(b.name)][:8]
+        if not hits:
+            await interaction.followup.send("찾을 수 없어요.", ephemeral=True)
+            return
+        lines = []
+        for b in hits:
+            lines.append(
+                f"**{b.label}** `{b.uuid[:8]}`\n"
+                f"부제 {b.subtext!r} · 버전 {b.version} · 스킨 {len(b.skins)}개\n"
+                f"설명 {(b.description or '')[:60]!r}\n"
+                f"경로 …{(b.asset_path or '')[-60:]} · 그림 …{(b.icon or '')[-40:]}")
+        await interaction.followup.send("\n\n".join(lines)[:1900], ephemeral=True)
+
     @app_commands.command(name="상태", description="봇·DB·데이터 수집 상태를 확인합니다.")
     async def status(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)

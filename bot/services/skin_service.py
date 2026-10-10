@@ -60,6 +60,8 @@ class Bundle:
     icon: str | None
     skins: list[Skin] = field(default_factory=list)
     label: str = ""                 # 이름이 같은 세트끼리 구분되는 이름 (예: 'RGX 11z 프로 (2.0)')
+    asset_path: str | None = None
+    version: str | None = None
 
 
 @dataclass
@@ -167,7 +169,8 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
                                 ("displayName", "displayNameSubText", "extraDescription", "description", "assetPath")))
         members = (by_theme.get(bk + ver.replace(".", ""), []) if ver else []) or (by_theme.get(bk, []) if bk else [])
         bundle = Bundle(b["uuid"], name, b.get("displayNameSubText"), b.get("extraDescription") or b.get("description"),
-                        b.get("displayIcon") or b.get("displayIcon2") or b.get("verticalPromoImage"), members, name)
+                        b.get("displayIcon") or b.get("displayIcon2") or b.get("verticalPromoImage"), members, name,
+                        b.get("assetPath"), ver)
         versions[bundle.uuid] = ver
         out.append(bundle)
 
