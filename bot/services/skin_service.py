@@ -274,6 +274,28 @@ def icon_url(b: Bundle) -> str | None:
     return b.icon or next((s.icon for s in b.skins if s.icon), None)
 
 
+async def warm_icons(cat: Catalog, first: int = 0) -> None:
+    """세트 그림을 뒤에서 미리 받아 둔다 (목록 격자가 바로 뜨도록).
+
+    메모리·CPU가 작은 서버라서 한 장씩, 천천히 받는다 (그림 풀기는 images._DECODE 로 한 번에 한 장).
+    first: 이 번호부터 먼저 받는다 (보고 있는 쪽 다음 쪽을 먼저).
+    """
+    from bot.render import images
+
+    order = cat.bundles[first:] + cat.bundles[:first]
+    t0 = time.monotonic()
+    ok = 0
+    try:
+        for b in order:
+            if await images.fetch_image(icon_url(b), BIG_IMAGE) is not None:
+                ok += 1
+            await asyncio.sleep(0.2)
+    except Exception as exc:
+        log.warning("세트 그림 미리 받기 실패: %s: %s", type(exc).__name__, exc)
+        return
+    log.info("세트 그림 미리 받기: %d/%d개 (%.0f초)", ok, len(order), time.monotonic() - t0)
+
+
 def cached() -> Catalog | None:
     """이미 불러온 목록 (없으면 None). 자동완성처럼 기다릴 수 없는 곳에서 쓴다 — 없으면 뒤에서 불러오기 시작."""
     global _task

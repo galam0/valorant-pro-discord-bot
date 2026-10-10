@@ -175,6 +175,15 @@ class ValorantBot(commands.Bot):
         from bot.services import tier_emoji
         asyncio.create_task(tier_emoji.ensure(self))   # 등급 아이콘 이모지 준비 (뒤에서)
 
+        async def warm_sets() -> None:
+            await asyncio.sleep(120)      # 게임 GIF 미리 만들기가 끝난 뒤, 한 장씩 천천히
+            try:
+                await skin_service.warm_icons(await skin_service.load())
+            except Exception as exc:
+                logger.warning("세트 그림 미리 받기 실패: %s", exc)
+
+        asyncio.create_task(warm_sets())
+
         ok = 0
         for guild in self.guilds:
             try:

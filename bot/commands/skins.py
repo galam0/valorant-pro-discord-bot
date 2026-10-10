@@ -127,6 +127,22 @@ class SkinBrowser(discord.ui.View):
     def _pages(self) -> int:
         return max(1, -(-len(self.cat.bundles) // PAGE))
 
+    def _prefetch_next(self) -> None:
+        """다음 쪽 그림을 뒤에서 미리 받아 둔다 (쪽을 넘길 때 기다리지 않도록)."""
+        nxt = (self.page + 1) % self._pages()
+        if nxt == self.page or (id(self.cat), nxt) in _GRID_CACHE:
+            return
+        urls = [ss.icon_url(b) for b in self.cat.bundles[nxt * PAGE:(nxt + 1) * PAGE]]
+
+        async def run() -> None:
+            for u in urls:
+                await images.fetch_image(u, ss.BIG_IMAGE)
+
+        try:
+            asyncio.get_running_loop().create_task(run())
+        except RuntimeError:
+            pass
+
     def _page_bundles(self) -> list[ss.Bundle]:
         return self.cat.bundles[self.page * PAGE:(self.page + 1) * PAGE]
 
@@ -170,6 +186,7 @@ class SkinBrowser(discord.ui.View):
                     if not missing:      # 그림이 다 있을 때만 저장 (빠진 건 다음에 다시 시도)
                         _GRID_CACHE.clear() if len(_GRID_CACHE) > 30 else None
                         _GRID_CACHE[ck] = png
+                self._prefetch_next()
                 return discord.File(BytesIO(png), filename="sets.png"), None
             if self.mode == "set":
                 urls = {s.tier_icon for s in self.bundle.skins[:10] if s.tier_icon}

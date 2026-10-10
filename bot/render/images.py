@@ -105,6 +105,8 @@ async def fetch_image(url: str | None, max_bytes: int = MAX_BYTES) -> Image.Imag
     if state == "retry":
         return None  # 캐시하지 않음 → 다음 요청 때 다시 시도
     if raw is not None:
+        if len(raw) > 1024 * 1024:
+            log.info("[성능] 큰 그림 %dKB: %s", len(raw) // 1024, url)
         async with _DECODE:
             img = await asyncio.to_thread(_decode, raw)
     else:
