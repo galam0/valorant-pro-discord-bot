@@ -905,6 +905,17 @@ class SkinCatalogTest(unittest.TestCase):
         self.assertEqual([x.uuid for x in cat.bundles[0].skins], ["s1", "s3"])   # '리버 컬렉션' 테마 = '리버' 번들
         self.assertEqual([b.uuid for b in cat.bundles], ["b1"])         # 스킨 없는 세트('없는 번들')는 목록에서 제외
 
+    def test_melee_takes_gun_tier(self):
+        from bot.services import skin_service as ss
+        weapons = [{"displayName": "밴달", "skins": [{"uuid": "g", "displayName": "리버 밴달", "themeUuid": "t1",
+                                                     "contentTierUuid": ss.PREMIUM, "displayIcon": "i"}]},
+                   {"displayName": "근접 무기", "category": "EEquippableCategory::Melee", "skins": [
+                       {"uuid": "m", "displayName": "리버 단검", "themeUuid": "t1", "contentTierUuid": ss.EXCLUSIVE, "displayIcon": "i"}]}]
+        tiers = [{"uuid": ss.PREMIUM, "displayName": "프리미엄 에디션"}, {"uuid": ss.EXCLUSIVE, "displayName": "익스클루시브 에디션"}]
+        cat = ss.parse_catalog(weapons, tiers, [{"uuid": "t1", "displayName": "리버"}], [], {"m": "Reaver Knife"})
+        knife = next(s for s in cat.skins if s.melee)
+        self.assertEqual((knife.tier, knife.price, knife.approx), ("프리미엄 에디션", 3550, False))
+
     def test_melee_and_exclusive_prices(self):
         from bot.services import skin_service as ss
         self.assertEqual(ss.skin_price(ss.PREMIUM, True, "Reaver Knife"), (3550, False))

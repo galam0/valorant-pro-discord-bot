@@ -33,18 +33,18 @@ APPROX_TIERS = {EXCLUSIVE}
 # 근접 무기는 등급이 같아도 값이 제각각이라 스킨별 실제 상점 가격을 쓴다 (영어 이름 기준).
 # 여기에 없는 (새로 나온) 근접 무기는 등급으로 어림한다 → '약'.
 MELEE_TIER_PRICE = {SELECT: 1750, DELUXE: 2550, PREMIUM: 3550, ULTRA: 4950, EXCLUSIVE: 4350}
-MELEE_PRICE_EN = {   # 출처: THESPIKE.GG 근접 무기 가격 목록 (2026), GINX 목록으로 보충
+MELEE_PRICE_EN = {   # 출처: THESPIKE.GG 근접 무기 가격 목록 (2026), GINX·Dot Esports·FPSNews 로 보충·확인
     1750: "Daydreams Crowbar; Fortune's Scepter; Intergrade Blade; Switchback Ascender; Smite Knife; Luxe Knife; Reverie Sword; Storm Maw Axe",
-    2550: "Aperture Stiletto; Chromedek Gauntlet; Combat Crafts Axe; Emberclad Hammer; Kaimana; MK.VII Liberty Combat Knife; Orion Sword; Wonderstallion Hammer; No Limits Bat; Prism Knife; Hu Else; Snowfall Wand; Titanmail Mace; Blade of Serket; Caeruleus; Winterwunderland Candy Cane; Equilibrium; Catrina; Altitude Knuckle Knife; Wasteland Crowbar; Jellybeam Sugarslice",
+    2550: "Aperture Stiletto; Chromedek Gauntlet; Combat Crafts Axe; Emberclad Hammer; Kaimana; MK.VII Liberty Combat Knife; Orion Sword; Wonderstallion Hammer; No Limits Bat; Prism Knife; Hu Else; Snowfall Wand; Titanmail Mace; Blade of Serket; Caeruleus; Winterwunderland Candy Cane; Equilibrium; Catrina; Altitude Knuckle Knife; Wasteland Crowbar; Jellybeam Sugarslice; Nanomight Knuckles; SilkLeaf Fan; Hi-DR0 Baton; VALORANT GO! Vol. 3 Dagger",
     3550: "Spine Dagger; Ego Knife; Gravitational Uranium Neuroblaster; Yoru's Stylish Butterfly Knife; Gaia's Fury; Gravitational Uranium Neuroblaster Baton; Prime Axe; Sovereign Sword; Oni Claw; Nebula Knife; Spline Dagger; Reaver Knife; Ion Energy Sword; VALORANT GO! Vol. 1 Knife; Yoru's Stylish Butterfly Comb; Prime 2.0 Karambit; Celestial Fan; Forsaken Ritual Blade; Origin Crescent Blade; Neptune Anchor; Xenohunter Knife; Crimsonbeast Hammer; Soulstrife Scythe; Cryostasis Impact Drill; Luna's Descent; Radiant Crisis 001 Baseball Bat; Recon Balisong; Gaia's Wrath; Magepunk Electroblade; Magepunk Shock Gauntlet; Prosperity; Hack; Black.Market Butterfly Knife; Solarstride Flamethrower; Minima Karambit; Neptune Hook",
     3915: "5 Years // Beta Remastered Knife",
-    4350: "Singularity Knife; Arcane Gauntlets; Blade of Aemondir; Blades of Primordia; Doombringer Battleaxe; Eternal Sovereign; Mystbloom Kunai; Overdrive Blade; Relic Stone Daggers; Ruyi Staff; Singularity Butterfly Knife; XERØFANG Knife; Blades of Imperium; Araxys Bio Harvester; Terminus a Quo; RGX 11z Pro Blade; RGX 11z Pro Firefly; Reaver Karambit; Ion Karambit; Broken Blade of the Ruined King; Relic of the Sentinel; Blade of Chaos; Neo Frontier Axe; Magepunk Sparkswitch; Mystbloom Fanblade; ORA by OneTap Knife; Dolmir's Judgement; Flail of Chaos; Bubblegum Deathwish Chainsaw; Divergence Staff; Bolt Knife; Helix Daggers; RGX 11z Pro Karambit; Blackthorn Blades",
+    4350: "Singularity Knife; Arcane Gauntlets; Blade of Aemondir; Blades of Primordia; Doombringer Battleaxe; Eternal Sovereign; Mystbloom Kunai; Overdrive Blade; Relic Stone Daggers; Ruyi Staff; Singularity Butterfly Knife; XERØFANG Knife; Blades of Imperium; Araxys Bio Harvester; Terminus a Quo; RGX 11z Pro Blade; RGX 11z Pro Firefly; Reaver Karambit; Ion Karambit; Broken Blade of the Ruined King; Relic of the Sentinel; Blade of Chaos; Neo Frontier Axe; Magepunk Sparkswitch; Mystbloom Fanblade; ORA by OneTap Knife; Dolmir's Judgement; Flail of Chaos; Bubblegum Deathwish Chainsaw; Divergence Staff; Bolt Knife; Helix Daggers; RGX 11z Pro Karambit; Blackthorn Blades; SplashX Gloves; Neo Frontier Lasso; Rogue Push Daggers; Holoflare",
     4550: "Glitchpop Dagger; Glitchpop Axe; BlastX Polymer KnifeTech Coated Knife",
     4710: "Ignite Fan",
     4950: "Evori's Spellcaster; Elderflame Dagger; Personal Administrative Melee Unit",
-    5350: "VCT 2026 SIGIL; Araxys Bio-Atomizers; Champions 2024 Blade; EX.O Edge; Kuronami no Yaiba; Nocturnum Scythe; Waveform; Champions 2023 Kunai; Champions 2022 Butterfly Knife; Champions 2021 Karambit; Onimaru Kunitsuna; Reaver Butterfly Knife; Champions 2025 Butterfly Knife; Phaseguard Splitter; Cyrax Fanblade",
+    5350: "VCT 2026 SIGIL; Araxys Bio-Atomizers; Champions 2024 Blade; EX.O Edge; Kuronami no Yaiba; Nocturnum Scythe; Waveform; Champions 2023 Kunai; Champions 2022 Butterfly Knife; Champions 2021 Karambit; Onimaru Kunitsuna; Reaver Butterfly Knife; Champions 2025 Butterfly Knife; Phaseguard Splitter; Cyrax Fanblade; Kuronami Naru-Kami; Champions 2026 Fan; Kogitsune; Blackspyre Divide; Suit of Aeris",
     5440: "VCT LOCK//IN Misericórdia",
-    5850: "VCT Karambit; 2025 VCT Karambit",
+    5850: "VCT Karambit; 2025 VCT Karambit; VCT 2025 Karambit",
     5950: "Power Fist",
 }
 MELEE_WEAPON = "2f59173c-4bed-b6c3-2191-dea9b58be9c7"
@@ -202,6 +202,20 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
             skins.append(Skin(s["uuid"], name, w.get("displayName") or "", tier.get("displayName"),
                               _color(tier.get("highlightColor")), base_img, theme_name.get(s.get("themeUuid")),
                               len(extras), len(levels), variants, tier.get("displayIcon"), price, melee, approx=approx, reward=reward))
+
+    # 공개 API는 근접 무기를 모두 '익스클루시브'로 준다 → 같은 컬렉션 총기 스킨의 등급을 따른다
+    gun_tiers: dict[str, list[Skin]] = {}
+    for sk in skins:
+        if not sk.melee and sk.theme and sk.tier:
+            gun_tiers.setdefault(sk.theme, []).append(sk)
+    for sk in skins:
+        guns = gun_tiers.get(sk.theme or "") if sk.melee else None
+        if guns:
+            count: dict[str | None, int] = {}
+            for g in guns:
+                count[g.tier] = count.get(g.tier, 0) + 1
+            ref = max(guns, key=lambda g: count[g.tier])
+            sk.tier, sk.color, sk.tier_icon = ref.tier, ref.color, ref.tier_icon
 
     _disambiguate(skins)
     by_theme: dict[str, list[Skin]] = {}
