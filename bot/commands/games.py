@@ -18,7 +18,7 @@ from discord.ext import commands
 from bot.services import guild_settings
 from bot.database.database import db
 from bot.embeds.common import COLOR_INFO, COLOR_MAIN, COLOR_OK, COLOR_WARN, error_embed
-from bot.render import game_anim, images
+from bot.render import connect4_card, game_anim, images
 from bot.render.base import render_enabled
 from bot.services import connect4 as c4, games, quiz_assets, quiz_bank
 from bot.services import games_service as gs
@@ -286,7 +286,8 @@ class Connect4Invite(discord.ui.View):
         random.shuffle(players)                      # 누가 먼저 둘지는 무작위
         game = Connect4View(players[0], players[1])
         game.message = self.message
-        await interaction.response.edit_message(content=None, embed=game.embed(), view=game)
+        embed, files = await game.render()
+        await interaction.response.edit_message(content=None, embed=embed, attachments=files, view=game)
 
     @discord.ui.button(label="거절", emoji="✖️", style=discord.ButtonStyle.secondary)
     async def decline(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
@@ -319,6 +320,7 @@ class Connect4View(discord.ui.View):
         super().__init__(timeout=self.TURN_LIMIT)
         self.players = {1: first, 2: second}
         self.board = c4.Board()
+        self.last: tuple[int, int] | None = None
         self.result = ""
         self.message: discord.Message | None = None
         self._build()
@@ -336,7 +338,7 @@ class Connect4View(discord.ui.View):
         give_up.callback = self._give_up
         self.add_item(give_up)
 
-    def embed(self) -> discord.Embed:
+    def embed(self, picture: bool = False) -> discord.Embed:
         p1, p2 = self.players[1], self.players[2]
         b = self.board
         head = f"{c4.DISC[1]} {p1.mention}  vs  {c4.DISC[2]} {p2.mention}"
@@ -349,7 +351,24 @@ class Connect4View(discord.ui.View):
         else:
             status, color = (f"{c4.DISC[b.turn]} {self.players[b.turn].mention} 님 차례 — 번호를 눌러 돌을 넣으세요 "
                              f"({self.TURN_LIMIT // 60}분 안에 안 두면 패배)"), COLOR_MAIN
-        return discord.Embed(title="🔴🟡 사목", description=f"{head}\n\n{b.text()}\n\n{status}", color=color)
+        e = discord.Embed(title="🔴🟡 사목", color=color)
+        if picture:
+            e.description = f"{head}\n\n{status}"
+            e.set_image(url="attachment://connect4.png")
+        else:
+            e.description = f"{head}\n\n{b.text()}\n\n{status}"
+        return e
+
+    async def render(self) -> tuple[discord.Embed, list[discord.File]]:
+        """판 그림이 든 임베드. 그림을 못 만들면 이모지 판으로."""
+        if render_enabled():
+            try:
+                async with _RENDER_SEM:
+                    png = await asyncio.to_thread(connect4_card.render_board, self.board, self.last)
+                return self.embed(picture=True), [_file(png, "connect4.png")]
+            except Exception as exc:
+                log.warning("사목 판 그림 실패, 이모지 판으로: %s: %s", type(exc).__name__, exc)
+        return self.embed(), []
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         ids = {p.id for p in self.players.values()}
@@ -362,16 +381,20 @@ class Connect4View(discord.ui.View):
         self._build()
         if self.board.over or self.result:
             self.stop()
-        await interaction.response.edit_message(embed=self.embed(), view=self)
+        await interaction.response.defer()
+        embed, files = await self.render()
+        await interaction.edit_original_response(embed=embed, attachments=files, view=self)
 
     def _drop(self, col: int):
         async def callback(interaction: discord.Interaction) -> None:
             if interaction.user.id != self.players[self.board.turn].id:
                 await interaction.response.send_message("아직 상대 차례예요.", ephemeral=True)
                 return
-            if self.board.drop(col) is None:
+            row = self.board.drop(col)
+            if row is None:
                 await interaction.response.send_message("그 줄은 꽉 찼어요.", ephemeral=True)
                 return
+            self.last = (row, col)
             await self._finish_if_over(interaction)
         return callback
 
@@ -389,7 +412,8 @@ class Connect4View(discord.ui.View):
         self._build()
         if self.message is not None:
             try:
-                await self.message.edit(embed=self.embed(), view=self)
+                embed, files = await self.render()
+                await self.message.edit(embed=embed, attachments=files, view=self)
             except discord.HTTPException:
                 pass
 
