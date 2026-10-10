@@ -488,10 +488,19 @@ async def warm_icons(cat: Catalog, first: int = 0) -> None:
     t0 = time.monotonic()
     ok = 0
     try:
+        notes = []
         for b in order:
-            if await fetch_icon(b) is not None:
+            img = await fetch_icon(b)
+            if img is not None:
                 ok += 1
+                if "챔피언스" in b.name:
+                    box = img.getbbox() if img.mode != "RGBA" else img.getchannel("A").getbbox()
+                    notes.append(f"{b.name}: {img.size} {img.mode} 보이는영역={box} 후보={[u.rsplit('/', 2)[-2][:8] + '/' + u.rsplit('/', 1)[-1] for u in icon_urls(b)]}")
+            else:
+                notes.append(f"{b.name}: 그림 없음 후보={icon_urls(b)}")
             await asyncio.sleep(0.2)
+        if notes:
+            log.info("세트 그림 진단: %s", " | ".join(notes))
     except Exception as exc:
         log.warning("세트 그림 미리 받기 실패: %s: %s", type(exc).__name__, exc)
         return
