@@ -313,6 +313,32 @@ def short_tier(name: str | None) -> str:
     return re.sub(r"\s*에디션$", "", name or "")
 
 
+def weapon_names(cat: Catalog) -> list[str]:
+    """스킨이 있는 무기 이름 (처음 나온 순서, 근접 무기는 마지막)."""
+    seen: list[str] = []
+    for s in cat.skins:
+        if s.weapon and s.weapon not in seen:
+            seen.append(s.weapon)
+    melee = {s.weapon for s in cat.skins if s.melee}
+    return [w for w in seen if w not in melee] + [w for w in seen if w in melee]
+
+
+def tier_names(cat: Catalog, weapon: str | None = None) -> list[str]:
+    """등급 이름을 싼 것부터 (무기를 주면 그 무기에 있는 등급만)."""
+    price: dict[str, int] = {}
+    for s in cat.skins:
+        if s.tier:
+            price[s.tier] = max(price.get(s.tier, 0), s.price or 0)
+    present = {s.tier for s in cat.skins if s.tier and (weapon is None or s.weapon == weapon)}
+    return sorted(present, key=lambda n: (price.get(n, 0) == 0, price.get(n, 0), n))
+
+
+def list_skins(cat: Catalog, weapon: str, tier: str | None = None) -> list[Skin]:
+    """무기(와 등급)로 거른 스킨, 숫자 → 영어 → 가나다 순."""
+    found = [s for s in cat.skins if s.weapon == weapon and (tier is None or s.tier == tier)]
+    return sorted(found, key=lambda s: sort_key(s.label or s.name))
+
+
 def icon_urls(b: Bundle) -> list[str]:
     """세트 그림 후보 주소: 세트 그림들 → 마지막엔 첫 스킨의 그림."""
     urls = list(b.icons) or ([b.icon] if b.icon else [])

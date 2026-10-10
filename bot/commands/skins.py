@@ -14,7 +14,7 @@ from discord.ext import commands
 from bot.embeds.common import COLOR_MAIN, error_embed
 from bot.render import images
 from bot.render.base import render_enabled
-from bot.render.skin_card import GRID_PER_PAGE, render_set_card, render_set_grid, render_skin_card
+from bot.render.skin_card import GRID_PER_PAGE, render_set_card, render_set_grid, render_skin_card, render_skin_grid
 from bot.services import skin_service as ss, tier_emoji
 
 log = logging.getLogger("valobot.cmd.skins")
@@ -79,9 +79,10 @@ class SkinBrowser(discord.ui.View):
     화면: 세트 목록(list) → 세트(set) → 스킨(skin). 스킨을 바로 열면 skin 에서 시작.
     """
 
-    def __init__(self, cat: ss.Catalog, owner_id: int, skin: ss.Skin | None = None, bundle: ss.Bundle | None = None) -> None:
+    def __init__(self, cat: ss.Catalog, owner_id: int, skin: ss.Skin | None = None, bundle: ss.Bundle | None = None,
+                 back: dict | None = None) -> None:
         super().__init__(timeout=300)
-        self.cat, self.owner_id = cat, owner_id
+        self.cat, self.owner_id, self.back = cat, owner_id, back   # back: 스킨 목록에서 왔다면 그 목록의 상태
         self.skin, self.bundle, self.idx, self.page = skin, bundle, 0, 0
         self.message: discord.Message | None = None
         self._build()
@@ -103,6 +104,8 @@ class SkinBrowser(discord.ui.View):
                 self._button("▶", self._next)
             if self._video():
                 self._button("🎬 스킨 영상", self._play)
+            if self.back:
+                self._button("📋 목록으로", self._to_skin_list)
             if self.bundle:
                 self._button("📦 세트로", self._back)
                 self.add_item(discord.ui.Button(label="🎬 트레일러", url=ss.trailer_url(self.bundle.label or self.bundle.name)))
@@ -266,6 +269,14 @@ class SkinBrowser(discord.ui.View):
         self.skin, self.idx = None, 0
         await self._show(interaction)
 
+    async def _to_skin_list(self, interaction: discord.Interaction) -> None:
+        lst = SkinList(self.cat, self.owner_id, **self.back)
+        await interaction.response.defer()
+        file, embed = await lst._render()
+        self.stop()
+        await interaction.edit_original_response(embed=embed, attachments=[file] if file is not None else [], view=lst)
+        lst.message = interaction.message
+
     async def _to_list(self, interaction: discord.Interaction) -> None:
         self.skin = self.bundle = None
         self.idx = 0
@@ -284,6 +295,183 @@ class SkinBrowser(discord.ui.View):
         for child in self.children:
             if not getattr(child, "url", None):
                 child.disabled = True
+        if self.message is not None:
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass
+
+
+ALL_TIERS = "__all__"
+
+
+class SkinList(discord.ui.View):
+    """/스킨목록: 무기 → (등급) → 20개씩 이미지 격자 → 스킨 카드."""
+
+    def __init__(self, cat: ss.Catalog, owner_id: int, weapon: str | None = None, tier: str | None = None, page: int = 0) -> None:
+        super().__init__(timeout=300)
+        self.cat, self.owner_id = cat, owner_id
+        self.weapon, self.tier, self.page = weapon, tier, page
+        self.message: discord.Message | None = None
+        self._build()
+
+    # -- 상태 ----------------------------------------------------------
+    def _skins(self) -> list[ss.Skin]:
+        return ss.list_skins(self.cat, self.weapon, self.tier) if self.weapon else []
+
+    def _pages(self) -> int:
+        return max(1, -(-len(self._skins()) // PAGE))
+
+    def _page_skins(self) -> list[ss.Skin]:
+        return self._skins()[self.page * PAGE:(self.page + 1) * PAGE]
+
+    def _build(self) -> None:
+        self.clear_items()
+        row = 0
+        if self.weapon and self._pages() > 1:
+            for label, cb in (("◀ 이전", self._prev_page), ("다음 ▶", self._next_page)):
+                b = discord.ui.Button(label=label, style=discord.ButtonStyle.secondary, row=0)
+                b.callback = cb
+                self.add_item(b)
+            row = 1
+        weapons = ss.weapon_names(self.cat)[:25]
+        sel = discord.ui.Select(placeholder=f"무기: {self.weapon}" if self.weapon else "무기를 골라 주세요",
+                                options=[discord.SelectOption(label=w, value=w, default=(w == self.weapon)) for w in weapons],
+                                row=row)
+        sel.callback = self._picked_weapon
+        self.add_item(sel)
+        if not self.weapon:
+            return
+        tiers = ss.tier_names(self.cat, self.weapon)
+        icon_of = {s.tier: s.tier_icon for s in self.cat.skins if s.tier}
+        opts = [discord.SelectOption(label="전체", value=ALL_TIERS, default=self.tier is None)]
+        opts += [discord.SelectOption(label=t, value=t, default=(t == self.tier), emoji=tier_emoji.emoji_for(icon_of.get(t))) for t in tiers]
+        sel = discord.ui.Select(placeholder=f"등급: {self.tier or '전체'}", options=opts[:25], row=row + 1)
+        sel.callback = self._picked_tier
+        self.add_item(sel)
+        page = self._page_skins()
+        if page:
+            options = []
+            for i, s in enumerate(page, 1):
+                desc = " · ".join(x for x in (s.weapon, ss.price_text(s)) if x)
+                options.append(discord.SelectOption(label=f"{self.page * PAGE + i}. {s.label or s.name}"[:100], value=s.uuid,
+                                                    description=desc[:100] or None, emoji=tier_emoji.emoji_for(s.tier_icon)))
+            sel = discord.ui.Select(placeholder="스킨 고르기", options=options, row=row + 2)
+            sel.callback = self._picked_skin
+            self.add_item(sel)
+
+    # -- 화면 ----------------------------------------------------------
+    def _right_text(self) -> str:
+        return f"{self.tier or '전체 등급'} · {self.page + 1} / {self._pages()}쪽 · {len(self._skins())}개"
+
+    def _embed(self) -> discord.Embed:
+        if not self.weapon:
+            e = discord.Embed(title="🎨 스킨 목록", description="아래 메뉴에서 무기를 고르면 스킨을 이미지로 보여줘요.", color=COLOR_MAIN)
+            return e
+        names = "\n".join(f"{self.page * PAGE + i}. {s.label or s.name}" + (f" ({ss.short_tier(s.tier)})" if s.tier else "")
+                          for i, s in enumerate(self._page_skins(), 1)) or "이 조건의 스킨이 없어요."
+        e = discord.Embed(title=f"🎨 {self.weapon} 스킨", description=names, color=COLOR_MAIN)
+        e.set_footer(text=self._right_text())
+        return e
+
+    async def _render(self) -> tuple[discord.File | None, discord.Embed | None]:
+        if not self.weapon:
+            return None, self._embed()
+        page = self._page_skins()
+        if not page:
+            return None, self._embed()
+        try:
+            if not render_enabled():
+                raise RuntimeError("image cards disabled")
+            ck = ("skins", id(self.cat), self.weapon, self.tier, self.page)
+            png = _GRID_CACHE.get(ck)
+            if png is None:
+                urls = {s.uuid: s.icon for s in page}
+                urls.update({s.tier_icon: s.tier_icon for s in page if s.tier_icon})
+                fetched = await images.fetch_many(urls)
+                png = await asyncio.to_thread(render_skin_grid, page, fetched, f"{self.weapon} 스킨", self._right_text(),
+                                              self.page * PAGE + 1)
+                if all(fetched.get(s.uuid) is not None for s in page):
+                    if len(_GRID_CACHE) > 60:
+                        _GRID_CACHE.clear()
+                    _GRID_CACHE[ck] = png
+            self._prefetch_next()
+            return discord.File(BytesIO(png), filename="skins.png"), None
+        except Exception as exc:
+            log.warning("스킨 목록 이미지 실패, 글로 대체: %s: %s", type(exc).__name__, exc)
+            return None, self._embed()
+
+    def _prefetch_next(self) -> None:
+        nxt = (self.page + 1) % self._pages()
+        if nxt == self.page:
+            return
+        upcoming = self._skins()[nxt * PAGE:(nxt + 1) * PAGE]
+
+        async def run() -> None:
+            for s in upcoming:
+                await images.fetch_image(s.icon)
+
+        try:
+            asyncio.get_running_loop().create_task(run())
+        except RuntimeError:
+            pass
+
+    async def first_message(self) -> dict:
+        file, embed = await self._render()
+        kw: dict = {"view": self}
+        kw.update({"file": file} if file is not None else {"embed": embed})
+        return kw
+
+    async def _show(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
+        file, embed = await self._render()
+        self._build()
+        await interaction.edit_original_response(embed=embed, attachments=[file] if file is not None else [], view=self)
+
+    # -- 입력 ----------------------------------------------------------
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message("명령어를 쓴 사람만 누를 수 있어요. 직접 /스킨목록 을 써 보세요.", ephemeral=True)
+            return False
+        return True
+
+    async def _picked_weapon(self, interaction: discord.Interaction) -> None:
+        self.weapon, self.tier, self.page = interaction.data["values"][0], None, 0
+        await self._show(interaction)
+
+    async def _picked_tier(self, interaction: discord.Interaction) -> None:
+        value = interaction.data["values"][0]
+        self.tier, self.page = (None if value == ALL_TIERS else value), 0
+        await self._show(interaction)
+
+    async def _turn(self, interaction: discord.Interaction, step: int) -> None:
+        self.page = (self.page + step) % self._pages()
+        await self._show(interaction)
+
+    async def _prev_page(self, interaction: discord.Interaction) -> None:
+        await self._turn(interaction, -1)
+
+    async def _next_page(self, interaction: discord.Interaction) -> None:
+        await self._turn(interaction, 1)
+
+    async def _picked_skin(self, interaction: discord.Interaction) -> None:
+        uuid = interaction.data["values"][0]
+        found = next((s for s in self._skins() if s.uuid == uuid), None)
+        if found is None:
+            await interaction.response.defer()
+            return
+        browser = SkinBrowser(self.cat, self.owner_id, skin=found,
+                              back={"weapon": self.weapon, "tier": self.tier, "page": self.page})
+        await interaction.response.defer()
+        file, embed = await browser._render()
+        self.stop()
+        await interaction.edit_original_response(embed=embed, attachments=[file] if file is not None else [],
+                                                 view=browser if browser.children else None)
+        browser.message = interaction.message
+
+    async def on_timeout(self) -> None:
+        for child in self.children:
+            child.disabled = True
         if self.message is not None:
             try:
                 await self.message.edit(view=self)
@@ -323,6 +511,15 @@ class SkinCommands(commands.Cog):
         view = SkinBrowser(cat, interaction.user.id, skin=found)
         kw = await view.first_message()
         view.message = await interaction.followup.send(content=extra, wait=True, **kw)
+
+    @app_commands.command(name="스킨목록", description="무기와 등급을 골라 스킨을 이미지 목록으로 훑어봅니다. (이름을 안 쳐도 돼요)")
+    async def skin_list(self, interaction: discord.Interaction) -> None:
+        cat = await self._catalog(interaction)
+        if cat is None:
+            return
+        view = SkinList(cat, interaction.user.id)
+        kw = await view.first_message()
+        view.message = await interaction.followup.send(wait=True, **kw)
 
     @app_commands.command(name="세트", description="발로란트 세트(번들)의 구성을 이미지로 보고, 안에서 스킨을 골라 봅니다.")
     @app_commands.describe(이름="세트 이름 (안 쓰면 목록)")

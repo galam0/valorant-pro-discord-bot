@@ -194,3 +194,39 @@ def render_set_grid(bundles: list, images: dict[str, Image.Image | None], page: 
         d.text((x + 23, y + 27), str(start_no + i), font=font("bold", 15), fill=TEXT, anchor="mm")
     d.text((w // 2, h - 26), "아래 메뉴에서 번호의 세트를 고르면 자세히 보여줘요", font=font("regular", 15), fill=MUTED, anchor="mm")
     return _png(img)
+
+
+def render_skin_grid(skins: list, images: dict[str, Image.Image | None], title: str, right: str, start_no: int = 1) -> bytes:
+    """스킨 목록 한 쪽 (5×4 = 20개). images: 스킨 uuid → 그림, 등급 아이콘 주소 → 아이콘."""
+    from bot.services.skin_service import price_text, short_tier
+
+    w = _MARGIN * 2 + GRID_COLS * _CELL_W + (GRID_COLS - 1) * _GAP
+    rows = max(1, -(-len(skins) // GRID_COLS))
+    h = 84 + rows * _CELL_H + (rows - 1) * _GAP + 40
+    img = _background(w, h, (255, 70, 85))
+    d = ImageDraw.Draw(img)
+    d.text((_MARGIN, 44), title, font=font("heavy", 32), fill=TEXT, anchor="lm")
+    d.text((w - _MARGIN, 44), right, font=font("bold", 18), fill=MUTED, anchor="rm")
+    for i, s in enumerate(skins):
+        r, c = divmod(i, GRID_COLS)
+        x = _MARGIN + c * (_CELL_W + _GAP)
+        y = 84 + r * (_CELL_H + _GAP)
+        accent = _tier_rgb(s.color)
+        d.rounded_rectangle([x, y, x + _CELL_W, y + _CELL_H], radius=14, fill=PANEL, outline=LINE)
+        d.rounded_rectangle([x, y, x + _CELL_W, y + 4], radius=2, fill=accent)
+        pic = images.get(s.uuid)
+        if pic is not None:
+            _paste_fit(img, pic, (x + 8, y + 24, x + _CELL_W - 8, y + 148))
+        tier_pic = images.get(s.tier_icon or "")
+        icon_w = 26 if tier_pic is not None else 0
+        name, f = fit_text(d, s.name, "bold", 16, _CELL_W - 20 - icon_w, min_size=12)
+        left = x + (_CELL_W - (icon_w + d.textlength(name, font=f))) / 2
+        if tier_pic is not None:
+            _icon(img, tier_pic, (int(left), y + 161), 22)
+        d.text((left + icon_w, y + 172), name, font=f, fill=TEXT, anchor="lm")
+        parts = [p for p in (short_tier(s.tier), price_text(s)) if p]
+        d.text((x + _CELL_W // 2, y + 196), " · ".join(parts) or "-", font=font("regular", 13),
+               fill=accent if s.tier else MUTED, anchor="mm")
+        d.ellipse([x + 8, y + 12, x + 38, y + 42], fill=(0, 0, 0), outline=accent, width=2)
+        d.text((x + 23, y + 27), str(start_no + i), font=font("bold", 15), fill=TEXT, anchor="mm")
+    return _png(img)

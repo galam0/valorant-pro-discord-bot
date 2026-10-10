@@ -885,6 +885,13 @@ class SkinCatalogTest(unittest.TestCase):
                    {"uuid": "b2", "displayName": "없는 번들", "displayIcon": None, "displayIcon2": "x"}]
         return ss, ss.parse_catalog(weapons, tiers, themes, bundles)
 
+    def test_weapon_and_tier_listing(self):
+        ss, cat = self._cat()
+        self.assertEqual(ss.weapon_names(cat), ["밴달", "근접 무기"])     # 근접은 마지막
+        self.assertEqual(ss.tier_names(cat, "밴달"), ["얼티밋 에디션"])
+        self.assertEqual([s.uuid for s in ss.list_skins(cat, "밴달")], ["s1"])
+        self.assertEqual(ss.list_skins(cat, "밴달", "없는 등급"), [])
+
     def test_parse_filters_and_links(self):
         ss, cat = self._cat()
         self.assertEqual([s.uuid for s in cat.skins], ["s1", "s3"])      # 기본/무작위 스킨 제외
