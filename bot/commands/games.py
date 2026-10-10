@@ -20,7 +20,7 @@ from bot.database.database import db
 from bot.embeds.common import COLOR_INFO, COLOR_MAIN, COLOR_OK, COLOR_WARN, error_embed
 from bot.render import game_anim, images
 from bot.render.base import render_enabled
-from bot.services import games, minesweeper as ms, quiz_assets, quiz_bank
+from bot.services import games, quiz_assets, quiz_bank
 from bot.services import games_service as gs
 from bot.services.economy_service import fmt
 
@@ -263,110 +263,6 @@ class QuizView(discord.ui.View):
         await self._resolve(None, None)
 
 
-MS_ROWS, MS_COLS = 4, 5          # 버튼 판: 4줄 × 5칸 (+ 맨 아래 조작 줄 = 디스코드 버튼 한도 25개)
-MS_LEVELS = {"쉬움": 3, "보통": 4, "어려움": 6}
-MS_SPOILER = {"쉬움": (8, 8, 8), "보통": (9, 9, 12), "어려움": (10, 10, 18)}
-
-
-class MinesweeperView(discord.ui.View):
-    """버튼 지뢰찾기. 칸을 누르면 열리고, 🚩 모드에서는 깃발을 꽂는다."""
-
-    def __init__(self, owner: discord.abc.User, level: str) -> None:
-        super().__init__(timeout=600)
-        self.owner, self.level = owner, level
-        self.board = ms.Board(MS_ROWS, MS_COLS, MS_LEVELS[level])
-        self.flag_mode = False
-        self.started_at = time.monotonic()
-        self.message: discord.Message | None = None
-        self._build()
-
-    def _build(self) -> None:
-        self.clear_items()
-        b = self.board
-        for r in range(MS_ROWS):
-            for c in range(MS_COLS):
-                p = (r, c)
-                btn = discord.ui.Button(style=discord.ButtonStyle.secondary, label="\u200b", row=r)
-                if p in b.opened:
-                    n = b.count(r, c)
-                    btn.label, btn.disabled = (str(n) if n else "\u200b"), True
-                    btn.style = discord.ButtonStyle.primary if n else discord.ButtonStyle.secondary
-                elif b.over and p in b.mine:
-                    btn.label, btn.emoji, btn.disabled = None, "💥" if p == b.lost_at else "💣", True
-                    btn.style = discord.ButtonStyle.danger if p == b.lost_at else (
-                        discord.ButtonStyle.success if p in b.flags else discord.ButtonStyle.secondary)
-                elif p in b.flags:
-                    btn.label, btn.emoji = None, "🚩"
-                    btn.disabled = b.over
-                else:
-                    btn.disabled = b.over
-                btn.callback = self._cell(r, c)
-                self.add_item(btn)
-        mode = discord.ui.Button(label="깃발 모드 켜짐" if self.flag_mode else "깃발 모드", emoji="🚩",
-                                 style=discord.ButtonStyle.success if self.flag_mode else discord.ButtonStyle.secondary,
-                                 row=4, disabled=b.over)
-        mode.callback = self._toggle_mode
-        again = discord.ui.Button(label="새 판", emoji="🔄", style=discord.ButtonStyle.primary, row=4)
-        again.callback = self._again
-        self.add_item(mode)
-        self.add_item(again)
-
-    def embed(self) -> discord.Embed:
-        b = self.board
-        left = b.mines - len(b.flags)
-        if b.won:
-            secs = time.monotonic() - self.started_at
-            return discord.Embed(title="💣 지뢰찾기 — 성공! 🎉",
-                                 description=f"지뢰 {b.mines}개를 모두 피했어요! ({secs:.0f}초)", color=COLOR_OK)
-        if b.lost:
-            return discord.Embed(title="💣 지뢰찾기 — 펑! 💥", description="지뢰를 밟았어요… 🔄 새 판으로 다시 해 보세요.",
-                                 color=COLOR_WARN)
-        how = "🚩 **깃발 모드**: 누르는 칸에 깃발을 꽂거나 뺍니다." if self.flag_mode else "칸을 눌러 여세요. 첫 칸은 항상 안전해요."
-        return discord.Embed(title=f"💣 지뢰찾기 ({self.level})",
-                             description=f"{how}\n남은 지뢰(깃발 기준): **{left}개** · {MS_ROWS}×{MS_COLS}판",
-                             color=COLOR_MAIN)
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.owner.id:
-            await interaction.response.send_message("다른 사람의 판이에요. 직접 /지뢰찾기 를 써 보세요!", ephemeral=True)
-            return False
-        return True
-
-    async def _update(self, interaction: discord.Interaction) -> None:
-        self._build()
-        if self.board.over:
-            self.stop()
-        await interaction.response.edit_message(embed=self.embed(), view=self)
-
-    def _cell(self, r: int, c: int):
-        async def callback(interaction: discord.Interaction) -> None:
-            if self.flag_mode:
-                self.board.toggle_flag(r, c)
-            else:
-                self.board.reveal(r, c)
-            await self._update(interaction)
-        return callback
-
-    async def _toggle_mode(self, interaction: discord.Interaction) -> None:
-        self.flag_mode = not self.flag_mode
-        await self._update(interaction)
-
-    async def _again(self, interaction: discord.Interaction) -> None:
-        self.stop()
-        view = MinesweeperView(self.owner, self.level)
-        view.message = self.message
-        await interaction.response.edit_message(embed=view.embed(), view=view)
-
-    async def on_timeout(self) -> None:
-        for child in self.children:
-            child.disabled = True
-        if self.message is not None:
-            try:
-                await self.message.edit(view=self)
-            except discord.HTTPException:
-                pass
-
-
 @app_commands.guild_only()
 class GameCommands(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
@@ -380,24 +276,6 @@ class GameCommands(commands.Cog):
             await interaction.response.send_message(embed=error_embed("현재 데이터를 불러올 수 없습니다."), ephemeral=True)
             return False
         return True
-
-    @app_commands.command(name="지뢰찾기", description="지뢰찾기 한 판! 버튼으로 바로 하거나, 스포일러 판으로 가려진 칸을 눌러 봐요.")
-    @app_commands.describe(난이도="지뢰 개수", 방식="버튼(4×5, 깃발 가능) 또는 스포일러(큰 판, 칸을 눌러 열기)")
-    @app_commands.choices(
-        난이도=[app_commands.Choice(name=n, value=n) for n in MS_LEVELS],
-        방식=[app_commands.Choice(name="버튼", value="버튼"), app_commands.Choice(name="스포일러", value="스포일러")])
-    async def minesweeper(self, interaction: discord.Interaction, 난이도: app_commands.Choice[str] | None = None,
-                          방식: app_commands.Choice[str] | None = None) -> None:
-        level = 난이도.value if 난이도 else "보통"
-        if 방식 and 방식.value == "스포일러":
-            rows, cols, mines = MS_SPOILER[level]
-            e = discord.Embed(title=f"💣 지뢰찾기 ({level}) — {rows}×{cols}, 지뢰 {mines}개",
-                              description="가려진 칸을 눌러 열어 보세요. 💣 가 나오면 끝! (열린 칸에서 시작)", color=COLOR_MAIN)
-            await interaction.response.send_message(embed=e, content=ms.spoiler_board(rows, cols, mines))
-            return
-        view = MinesweeperView(interaction.user, level)
-        await interaction.response.send_message(embed=view.embed(), view=view)
-        view.message = await interaction.original_response()
 
     @app_commands.command(name="동전", description="동전 던지기. 맞히면 1.95배!")
     @app_commands.describe(금액="걸 VP (10~2000)", 면="앞면 또는 뒷면")
