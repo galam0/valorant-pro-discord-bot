@@ -1,4 +1,4 @@
-"""/프로필 /상점 /꾸미기 /프로필설정 — VP로 사는 프로필 꾸미기."""
+"""/프로필 /프로필상점 /꾸미기 /프로필설정 — VP로 사는 프로필 꾸미기."""
 
 from __future__ import annotations
 
@@ -88,7 +88,7 @@ class ProfileView(discord.ui.View):
             return
         have = await ps.owned(interaction.guild_id, interaction.user.id)
         cur = await ps.current_equipped(interaction.guild_id, interaction.user.id)
-        await interaction.response.send_message("무엇을 바꿀까요? (`/상점`에서 더 살 수 있어요)",
+        await interaction.response.send_message("무엇을 바꿀까요? (`/프로필상점`에서 더 살 수 있어요)",
                                                 view=CustomizeView(interaction.guild_id, interaction.user, have, cur), ephemeral=True)
 
     @discord.ui.button(label="상점", emoji="🛍️", style=discord.ButtonStyle.secondary)
@@ -190,7 +190,7 @@ class ProfileCommands(commands.Cog):
         else:
             await interaction.followup.send(embed=text_profile(data), view=view)
 
-    @app_commands.command(name="상점", description="VP로 프로필 배경·테두리·칭호를 삽니다.")
+    @app_commands.command(name="프로필상점", description="VP로 프로필 배경·테두리·칭호를 삽니다.")
     async def shop(self, interaction: discord.Interaction) -> None:
         if not await self._guard(interaction):
             return
@@ -202,7 +202,7 @@ class ProfileCommands(commands.Cog):
             return
         have = await ps.owned(interaction.guild_id, interaction.user.id)
         cur = await ps.current_equipped(interaction.guild_id, interaction.user.id)
-        await interaction.response.send_message("무엇을 바꿀까요? (`/상점`에서 더 살 수 있어요)",
+        await interaction.response.send_message("무엇을 바꿀까요? (`/프로필상점`에서 더 살 수 있어요)",
                                                 view=CustomizeView(interaction.guild_id, interaction.user, have, cur), ephemeral=True)
 
     @app_commands.command(name="프로필설정", description="프로필에 표시할 응원 팀과 최애 요원을 정합니다.")

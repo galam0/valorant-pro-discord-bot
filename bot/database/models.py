@@ -448,3 +448,21 @@ class StockHistory(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (Index("ix_stock_history_symbol_time", "symbol", "created_at"),)
+
+
+class ValorantShopLink(Base):
+    """발로란트 개인 상점 연동 상태 (Discord 쪽 메타데이터만).
+
+    Riot 비밀번호·세션 쿠키·액세스 토큰 같은 인증 정보는 저장하지 않는다.
+    허용된 제공자의 연동 절차가 성공했을 때만 status 를 'linked' 로 바꾼다.
+    """
+
+    __tablename__ = "valorant_shop_links"
+
+    discord_user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="not_linked")  # linked / expired
+    provider: Mapped[str | None] = mapped_column(String(64))
+    linked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(String(250))      # 오류 종류만 (내용·인증 정보 X)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

@@ -1,4 +1,4 @@
-"""/프로필·/상점·/꾸미기 의 DB 처리."""
+"""/프로필·/프로필상점·/꾸미기 의 DB 처리."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ async def equip(guild_id: int, user_id: int, item_id: str) -> None:
     async with db.session() as s:
         have = await economy.owned_items(s, guild_id, user_id)
         if not shop_catalog.owned_or_free(item_id, have):
-            raise ShopError("아직 갖고 있지 않은 상품이에요. `/상점`에서 먼저 구매해주세요.")
+            raise ShopError("아직 갖고 있지 않은 상품이에요. `/프로필상점`에서 먼저 구매해주세요.")
         await economy.upsert_profile(s, guild_id, user_id, **{item.kind: item_id})
         await s.commit()
 

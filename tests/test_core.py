@@ -898,3 +898,32 @@ class SkinCatalogTest(unittest.TestCase):
         self.assertEqual(len(ss.search_skins(cat, "리버")), 2)
         self.assertEqual(ss.search_skins(cat, "없음없음"), [])
         self.assertEqual([b.uuid for b in ss.search_bundles(cat, "리")], ["b1"])
+
+
+class ValorantShopTest(unittest.TestCase):
+    def test_default_provider_is_unsupported_and_never_fakes_data(self):
+        from bot.services import valorant_shop_service as vs
+
+        self.assertFalse(vs.provider.available)
+        self.assertEqual(vs.link_state("linked", vs.provider), "unsupported")   # 제공자가 없으면 DB 상태와 무관
+        self.assertIn("지원하지 않아요", vs.STATE_TEXT["unsupported"])
+        with self.assertRaises(vs.ProviderNotConfigured):
+            asyncio.run(vs.provider.get_daily_store(1))
+        with self.assertRaises(vs.ProviderNotConfigured):
+            asyncio.run(vs.provider.get_night_market(1))
+
+    def test_link_states_with_available_provider(self):
+        from bot.services import valorant_shop_service as vs
+
+        fake = NS(name="fake", available=True)
+        self.assertEqual(vs.link_state(None, fake), "not_linked")
+        self.assertEqual(vs.link_state("linked", fake), "linked")
+        self.assertEqual(vs.link_state("expired", fake), "expired")
+
+    def test_no_secret_columns_in_link_model(self):
+        import re
+        src = open("bot/database/models.py", encoding="utf-8").read()
+        block = src[src.index("class ValorantShopLink"):]
+        cols = re.findall(r"^\s+(\w+): Mapped", block, re.M)
+        for bad in ("password", "token", "cookie", "secret", "session"):
+            self.assertFalse(any(bad in c for c in cols), cols)
