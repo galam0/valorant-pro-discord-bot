@@ -84,6 +84,15 @@ def _color(hexstr: str | None) -> int | None:
         return None
 
 
+def sort_key(name: str) -> tuple:
+    """숫자 → 영어 → 가나다 순. 앞의 기호(//, [ 등)는 무시하고, 숫자는 크기대로(2 < 10) 비교한다."""
+    s = re.sub(r"^[^0-9A-Za-z가-힣]+", "", name or "")
+    first = s[:1]
+    group = 0 if first.isdigit() else 1 if first.isascii() and first.isalpha() else 2 if first else 3
+    parts = re.split(r"(\d+)", s.casefold())
+    return (group, [int(x) if x.isdigit() else x for x in parts])
+
+
 def _version(text: str) -> str | None:
     """글 안에서 '2.0', '3.0' 같은 버전 표기를 찾는다."""
     m = re.search(r"(?<![\d.])(\d)\.0(?![\d.])", text)
@@ -185,6 +194,7 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
         if cur is None or (len(b.skins), b.version is None) > (len(cur.skins), cur.version is None):
             best[k] = b
     out = [b for b in out if best[key(b.name)] is b]
+    out.sort(key=lambda b: sort_key(b.label or b.name))
     return Catalog(skins, out)
 
 

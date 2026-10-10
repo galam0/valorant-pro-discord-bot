@@ -14,11 +14,11 @@ from discord.ext import commands
 from bot.embeds.common import COLOR_MAIN, error_embed
 from bot.render import images
 from bot.render.base import render_enabled
-from bot.render.skin_card import render_set_card, render_skin_card
+from bot.render.skin_card import GRID_PER_PAGE, render_set_card, render_set_grid, render_skin_card
 from bot.services import skin_service as ss, tier_emoji
 
 log = logging.getLogger("valobot.cmd.skins")
-PAGE = 25   # 선택 메뉴는 한 번에 25개까지
+PAGE = GRID_PER_PAGE   # 한 쪽 20개 (선택 메뉴 한도 25 안)
 
 
 async def skin_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
@@ -123,13 +123,17 @@ class SkinBrowser(discord.ui.View):
         b.callback = callback
         self.add_item(b)
 
+    def _pages(self) -> int:
+        return max(1, -(-len(self.cat.bundles) // PAGE))
+
     def _page_bundles(self) -> list[ss.Bundle]:
         return self.cat.bundles[self.page * PAGE:(self.page + 1) * PAGE]
 
     def _options(self) -> list[discord.SelectOption]:
         if self.mode == "list":
-            return [discord.SelectOption(label=(b.label or b.name)[:100], value=b.uuid, description=f"스킨 {len(b.skins)}개"[:100] if b.skins else None)
-                    for b in self._page_bundles()]
+            return [discord.SelectOption(label=f"{self.page * PAGE + i}. {b.label or b.name}"[:100], value=b.uuid,
+                                         description=f"스킨 {len(b.skins)}개"[:100] if b.skins else None)
+                    for i, b in enumerate(self._page_bundles(), 1)]
         if self.bundle is None:
             return []
         out = []
@@ -151,6 +155,12 @@ class SkinBrowser(discord.ui.View):
                 weapon, tier = await asyncio.gather(images.fetch_big(s.variants[self.idx][1], 900), images.fetch_image(s.tier_icon))
                 png = await asyncio.to_thread(render_skin_card, s, self.idx, weapon, tier)
                 return discord.File(BytesIO(png), filename="skin.png"), None
+            if self.mode == "list":
+                page = self._page_bundles()
+                fetched = await images.fetch_many({b.uuid: b.icon for b in page})
+                png = await asyncio.to_thread(render_set_grid, page, fetched, self.page, self._pages(), len(self.cat.bundles),
+                                              self.page * PAGE + 1)
+                return discord.File(BytesIO(png), filename="sets.png"), None
             if self.mode == "set":
                 urls = {s.tier_icon for s in self.bundle.skins[:10] if s.tier_icon}
                 fetched = await images.fetch_many({u: u for u in urls})
@@ -166,10 +176,9 @@ class SkinBrowser(discord.ui.View):
             return skin_embed(self.skin, self.idx)
         if self.mode == "set":
             return bundle_embed(self.bundle)
-        names = "\n".join(f"· {b.label or b.name}" for b in self._page_bundles())
+        names = "\n".join(f"{self.page * PAGE + i}. {b.label or b.name}" for i, b in enumerate(self._page_bundles(), 1))
         e = discord.Embed(title="🎁 세트 목록", description=names or "없음", color=COLOR_MAIN)
-        pages = max(1, -(-len(self.cat.bundles) // PAGE))
-        e.set_footer(text=f"전체 {len(self.cat.bundles)}개 · {self.page + 1}/{pages}쪽 · 아래에서 고르거나 /세트 이름 으로 검색해요")
+        e.set_footer(text=f"전체 {len(self.cat.bundles)}개 · {self.page + 1}/{self._pages()}쪽 · 아래에서 고르거나 /세트 이름 으로 검색해요")
         return e
 
     async def first_message(self) -> dict:
@@ -206,8 +215,7 @@ class SkinBrowser(discord.ui.View):
         await self._step(interaction, 1)
 
     async def _turn_page(self, interaction: discord.Interaction, step: int) -> None:
-        pages = max(1, -(-len(self.cat.bundles) // PAGE))
-        self.page = (self.page + step) % pages
+        self.page = (self.page + step) % self._pages()
         await self._show(interaction)
 
     async def _prev_page(self, interaction: discord.Interaction) -> None:

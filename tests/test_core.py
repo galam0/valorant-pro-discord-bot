@@ -947,6 +947,15 @@ class DuplicateBundleTest(unittest.TestCase):
         self.assertEqual([b.uuid for b in cat.bundles], ["ok", "ok2"])     # VCT 연도 칼 세트는 남기고 클래식만 제외
 
 
+class SetSortTest(unittest.TestCase):
+    def test_numbers_then_english_then_korean(self):
+        from bot.services.skin_service import sort_key
+
+        names = ["프라임", "RGX 11z", "10 스킨", "2025 챔피언스", "2 스킨", "//2.0 아이온", "ABC", "가이아", "넵튠", "rgx 2"]
+        got = sorted(names, key=sort_key)
+        self.assertEqual(got, ["2 스킨", "//2.0 아이온", "10 스킨", "2025 챔피언스", "ABC", "rgx 2", "RGX 11z", "가이아", "넵튠", "프라임"])
+
+
 class TierEmojiNameTest(unittest.TestCase):
     def test_name(self):
         from bot.services.tier_emoji import emoji_name
