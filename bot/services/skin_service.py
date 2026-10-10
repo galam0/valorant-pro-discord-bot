@@ -72,6 +72,7 @@ class Catalog:
     skins: list[Skin]
     bundles: list[Bundle]
     loaded_at: float = 0.0
+    dropped: list[tuple[str, str]] = field(default_factory=list)   # (세트 이름, 빠진 이유) — 진단용
 
 
 def key(text: str) -> str:
@@ -92,6 +93,11 @@ def sort_key(name: str) -> tuple:
     group = 0 if first.isdigit() else 1 if first.isascii() and first.isalpha() else 2 if first else 3
     parts = re.split(r"(\d+)", s.casefold())
     return (group, [int(x) if x.isdigit() else x for x in parts])
+
+
+def _tokens(text: str) -> frozenset[str]:
+    """낱말 집합 (순서 무시). 'Champions 2023' 과 '2023 Champions' 를 같게 본다."""
+    return frozenset(re.findall(r"[0-9a-z가-힣]+", (text or "").lower()))
 
 
 def _version(text: str) -> str | None:
@@ -169,17 +175,28 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
         if sk.theme:
             by_theme.setdefault(key(_BUNDLE_SUFFIX.sub("", sk.theme)), []).append(sk)
 
+    theme_tokens = [(_tokens(_BUNDLE_SUFFIX.sub("", th)), sks) for th, sks in
+                    {sk.theme: [x for x in skins if x.theme == sk.theme] for sk in skins if sk.theme}.items()]
+    dropped: list[tuple[str, str]] = []
     out: list[Bundle] = []
     versions: dict[str, str | None] = {}
     for b in bundles:
         name = b.get("displayName") or ""
-        if not name or EXCLUDED_BUNDLE.search(f"{name} {b.get('displayNameSubText') or ''}"):
+        if not name:
+            continue
+        if EXCLUDED_BUNDLE.search(f"{name} {b.get('displayNameSubText') or ''}"):
+            dropped.append((name, "제외 규칙"))
             continue
         bk = key(_BUNDLE_SUFFIX.sub("", name))
         # 이름이 같아도 2.0·3.0 판은 이름·부제·설명·에셋 경로 어딘가에 버전이 적혀 있으면 그걸로 컬렉션을 찾는다
         ver = _version(" ".join(str(b.get(k) or "") for k in
                                 ("displayName", "displayNameSubText", "extraDescription", "description", "assetPath")))
         members = (by_theme.get(bk + ver.replace(".", ""), []) if ver else []) or (by_theme.get(bk, []) if bk else [])
+        if not members:
+            # 낱말 순서가 달라도(예: '챔피언스 2023' ↔ '2023 챔피언스') 같은 컬렉션이면 연결한다
+            want = _tokens(_BUNDLE_SUFFIX.sub("", name))
+            if want:
+                members = next((sks for tk, sks in theme_tokens if tk == want), [])
         bundle = Bundle(b["uuid"], name, b.get("displayNameSubText"), b.get("extraDescription") or b.get("description"),
                         b.get("displayIcon") or b.get("displayIcon2") or b.get("verticalPromoImage"), members, name,
                         b.get("assetPath"), ver,
@@ -187,6 +204,8 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
         versions[bundle.uuid] = ver
         if members:                 # 스킨이 없는 세트(분무기·카드만 있는 묶음 등)는 뺀다
             out.append(bundle)
+        else:
+            dropped.append((name, "스킨 없음"))
 
     # 이름이 같은 세트(2.0·3.0 판 등)는 하나만 남긴다: 스킨이 가장 많은 것 → 버전 표기가 없는 원본 → 먼저 나온 것
     best: dict[str, Bundle] = {}
@@ -195,9 +214,14 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
         cur = best.get(k)
         if cur is None or (len(b.skins), b.version is None) > (len(cur.skins), cur.version is None):
             best[k] = b
+    for b in out:
+        if best[key(b.name)] is not b:
+            dropped.append((b.name, "같은 이름 중복"))
     out = [b for b in out if best[key(b.name)] is b]
     out.sort(key=lambda b: sort_key(b.label or b.name))
-    return Catalog(skins, out)
+    cat = Catalog(skins, out)
+    cat.dropped = dropped
+    return cat
 
 
 def price_text(s: Skin) -> str | None:
@@ -265,6 +289,8 @@ async def load(force: bool = False) -> Catalog:
         cat.loaded_at = time.monotonic()
         _catalog = cat
         log.info("스킨 목록 불러옴: 스킨 %d · 번들 %d", len(cat.skins), len(cat.bundles))
+        if cat.dropped:
+            log.info("목록에서 빠진 세트 %d개: %s", len(cat.dropped), ", ".join(f"{n}({r})" for n, r in cat.dropped))
         return cat
 
 

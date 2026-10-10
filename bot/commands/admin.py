@@ -346,9 +346,10 @@ class AdminGroup(app_commands.Group, name="관리", description="관리자 전�
             await interaction.followup.send(f"스킨 목록을 불러오지 못했어요: {type(exc).__name__}", ephemeral=True)
             return
         q = ss.key(이름)
+        gone = [f"{n} ({r})" for n, r in cat.dropped if q and q in ss.key(n)][:8]
         hits = [b for b in cat.bundles if q and q in ss.key(b.name)][:8]
         if not hits:
-            await interaction.followup.send("찾을 수 없어요.", ephemeral=True)
+            await interaction.followup.send("목록에 없어요." + (f"\n빠진 세트: {', '.join(gone)}" if gone else ""), ephemeral=True)
             return
         lines = []
         for b in hits:
@@ -357,6 +358,8 @@ class AdminGroup(app_commands.Group, name="관리", description="관리자 전�
                 f"부제 {b.subtext!r} · 버전 {b.version} · 스킨 {len(b.skins)}개\n"
                 f"설명 {(b.description or '')[:60]!r}\n"
                 f"경로 …{(b.asset_path or '')[-60:]} · 그림 …{(b.icon or '')[-40:]}")
+        if gone:
+            lines.append("빠진 세트: " + ", ".join(gone))
         await interaction.followup.send("\n\n".join(lines)[:1900], ephemeral=True)
 
     @app_commands.command(name="상태", description="봇·DB·데이터 수집 상태를 확인합니다.")

@@ -958,6 +958,18 @@ class IconUrlTest(unittest.TestCase):
         self.assertEqual(ss.icon_urls(ss.Bundle("b", "n", None, None, None, [])), [])
 
 
+class ThemeTokenMatchTest(unittest.TestCase):
+    def test_word_order_and_dropped(self):
+        from bot.services import skin_service as ss
+
+        sk = {"uuid": "a", "displayName": "챔피언스 2023 밴달", "themeUuid": "t", "contentTierUuid": None, "displayIcon": "i", "levels": [], "chromas": []}
+        cat = ss.parse_catalog([{"displayName": "밴달", "skins": [sk]}], [], [{"uuid": "t", "displayName": "2023 챔피언스 컬렉션"}],
+                               [{"uuid": "b1", "displayName": "챔피언스 2023"}, {"uuid": "b2", "displayName": "듀오의 하루"},
+                                {"uuid": "b3", "displayName": "팀 캡슐"}])
+        self.assertEqual([[s.uuid for s in b.skins] for b in cat.bundles], [["a"]])
+        self.assertEqual(dict(cat.dropped), {"듀오의 하루": "스킨 없음", "팀 캡슐": "제외 규칙"})
+
+
 class SetTierTest(unittest.TestCase):
     def test_majority_tier_then_price(self):
         from bot.services import skin_service as ss
