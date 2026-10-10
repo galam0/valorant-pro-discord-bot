@@ -1076,3 +1076,30 @@ class StockExtrasTest(unittest.TestCase):
         png = render_profile_card(dict(name="a", title="x", vp=1, rank=1, pred_win=0, pred_total=0, fav_team=None, fav_agent=None,
                                        theme="theme_default", frame="frame_rainbow"))
         self.assertTrue(png.startswith(b"\x89PNG"))
+
+
+class Connect4Test(unittest.TestCase):
+    def test_drop_and_wins(self):
+        from bot.services import connect4 as c4
+        b = c4.Board()
+        for col in (0, 1, 0, 1, 0, 1):          # 빨강이 0번 줄 세로로 3개
+            b.drop(col)
+        self.assertIsNone(b.winner)
+        b.drop(0)
+        self.assertEqual(b.winner, 1)
+        self.assertEqual(len(b.line), 4)
+        self.assertIsNone(b.drop(2))            # 끝난 판에는 못 둠
+        self.assertIn("🟥", b.text())
+
+    def test_diagonal_and_full_column(self):
+        from bot.services import connect4 as c4
+        b = c4.Board()
+        for col in (0, 1, 1, 2, 2, 3, 2, 3, 3, 6, 3):   # 빨강 ↗ 대각선
+            b.drop(col)
+        self.assertEqual(b.winner, 1)
+        b = c4.Board()
+        for _ in range(c4.ROWS):
+            b.drop(5)
+        self.assertFalse(b.can_drop(5))
+        self.assertIsNone(b.drop(5))
+        self.assertEqual(len(b.text().splitlines()), c4.ROWS + 1)
