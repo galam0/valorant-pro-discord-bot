@@ -909,6 +909,19 @@ class SkinCatalogTest(unittest.TestCase):
         self.assertEqual([b.uuid for b in ss.search_bundles(cat, "리")], ["b1"])
 
 
+class SkinDisambiguateTest(unittest.TestCase):
+    def test_same_name_gets_label(self):
+        from bot.services import skin_service as ss
+
+        mk = lambda u, th, w="밴달": ss.Skin(u, "프라임 밴달", w, "t", None, None, th, 0, 0)
+        a, b, c = mk("1", "프라임"), mk("2", "프라임 2.0"), mk("3", "프라임")
+        d = ss.Skin("4", "단독", "밴달", None, None, None, None, 0, 0)
+        ss._disambiguate([a, b, d])
+        self.assertEqual((a.label, b.label, d.label), ("프라임 밴달 (프라임)", "프라임 밴달 (프라임 2.0)", "단독"))
+        ss._disambiguate([a, c])
+        self.assertEqual((a.label, c.label), ("프라임 밴달 (1)", "프라임 밴달 (2)"))
+
+
 class TierEmojiNameTest(unittest.TestCase):
     def test_name(self):
         from bot.services.tier_emoji import emoji_name

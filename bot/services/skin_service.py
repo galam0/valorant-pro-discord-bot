@@ -48,6 +48,7 @@ class Skin:
     tier_icon: str | None = None
     price: int | None = None        # 등급 기준 가격 (VP). 근접 무기·등급 없음은 None
     melee: bool = False
+    label: str = ""          # 목록·선택 메뉴에 보일 이름 (이름이 같은 스킨끼리는 구분 글자가 붙음)
 
 
 @dataclass
@@ -86,6 +87,26 @@ def _chroma_label(chroma_name: str, skin_name: str) -> str:
     return chroma_name.replace(skin_name, "").strip() or chroma_name
 
 
+def _disambiguate(skins: list[Skin]) -> None:
+    """이름이 같은 스킨(예: 원본과 2.0 버전)에 컬렉션 → 무기 → 등급 순으로 서로 다른 값을 붙여 구분한다."""
+    groups: dict[str, list[Skin]] = {}
+    for s in skins:
+        s.label = s.name
+        groups.setdefault(key(s.name), []).append(s)
+    for g in groups.values():
+        if len(g) < 2:
+            continue
+        for attr in ("theme", "weapon", "tier"):
+            vals = [getattr(s, attr) for s in g]
+            if all(vals) and len(set(vals)) == len(g):
+                for s, v in zip(g, vals):
+                    s.label = f"{s.name} ({v})"
+                break
+        else:
+            for i, s in enumerate(g, 1):
+                s.label = f"{s.name} ({i})"
+
+
 def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bundles: list[dict]) -> Catalog:
     tier_by = {t.get("uuid"): t for t in tiers}
     theme_name = {t.get("uuid"): t.get("displayName") for t in themes}
@@ -121,6 +142,7 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
                               _color(tier.get("highlightColor")), base_img, theme_name.get(s.get("themeUuid")),
                               len(extras), len(levels), variants, tier.get("displayIcon"), price, melee))
 
+    _disambiguate(skins)
     by_theme: dict[str, list[Skin]] = {}
     for sk in skins:
         if sk.theme:

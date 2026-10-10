@@ -24,7 +24,7 @@ async def skin_autocomplete(interaction: discord.Interaction, current: str) -> l
     cat = ss.cached()
     if cat is None:
         return []
-    return [app_commands.Choice(name=f"{s.name}{f' · {s.tier}' if s.tier else ''}"[:100], value=s.uuid)
+    return [app_commands.Choice(name=f"{s.label or s.name}{f' · {s.tier}' if s.tier else ''}"[:100], value=s.uuid)
             for s in ss.search_skins(cat, current)]
 
 
@@ -128,7 +128,7 @@ class SkinBrowser(discord.ui.View):
         out = []
         for s in self.bundle.skins[:25]:
             desc = " · ".join(x for x in (s.weapon, ss.price_text(s)) if x)
-            out.append(discord.SelectOption(label=s.name[:100], value=s.uuid, description=desc[:100] or None,
+            out.append(discord.SelectOption(label=(s.label or s.name)[:100], value=s.uuid, description=desc[:100] or None,
                                             emoji=tier_emoji.emoji_for(s.tier_icon),
                                             default=bool(self.skin and s.uuid == self.skin.uuid)))
         return out
@@ -262,7 +262,7 @@ class SkinCommands(commands.Cog):
                 await interaction.followup.send(embed=error_embed(f"'{이름}' 스킨을 찾을 수 없어요."))
                 return
             found = hits[0]
-            extra = f"비슷한 스킨: {', '.join(s.name for s in hits[1:6])}" if len(hits) > 1 else None
+            extra = f"비슷한 스킨: {', '.join(s.label or s.name for s in hits[1:6])}" if len(hits) > 1 else None
         view = SkinBrowser(cat, interaction.user.id, skin=found)
         kw = await view.first_message()
         view.message = await interaction.followup.send(content=extra, wait=True, **kw)
