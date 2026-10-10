@@ -927,3 +927,33 @@ class ValorantShopTest(unittest.TestCase):
         cols = re.findall(r"^\s+(\w+): Mapped", block, re.M)
         for bad in ("password", "token", "cookie", "secret", "session"):
             self.assertFalse(any(bad in c for c in cols), cols)
+
+
+class ValorantShopSafetyTest(unittest.TestCase):
+    def test_concurrent_requests_do_not_mix_users(self):
+        """제공자는 요청마다 유저 ID를 인자로 받는 무상태 구조 — 동시에 불러도 결과가 섞이지 않는다 (가짜 제공자로 확인)."""
+        from bot.services import valorant_shop_service as vs
+
+        class Fake:
+            name, available = "fake", True
+
+            async def get_daily_store(self, uid):
+                await asyncio.sleep(0.01 * (uid % 3))
+                return vs.ShopResult([vs.ShopItem(f"item-{uid}")])
+
+        async def run():
+            return await asyncio.gather(*(Fake().get_daily_store(u) for u in range(1, 31)))
+
+        results = asyncio.run(run())
+        self.assertEqual([r.items[0].name for r in results], [f"item-{u}" for u in range(1, 31)])
+
+    def test_no_secret_logging_or_password_arguments(self):
+        import re
+        for path in ("bot/commands/valorant_shop.py", "bot/services/valorant_shop_service.py", "bot/database/valorant_shop.py"):
+            src = open(path, encoding="utf-8").read()
+            self.assertNotIn("print(", src, path)
+            for line in src.splitlines():
+                if "log." in line and "exc" in line:
+                    self.assertIn("type(exc).__name__", line, f"{path}: {line}")   # 예외 내용 대신 종류만 기록
+        cmd = open("bot/commands/valorant_shop.py", encoding="utf-8").read()
+        self.assertIsNone(re.search(r"password|비밀번호\s*:|cookie|쿠키\s*:", cmd.replace("비밀번호를 입력하지", "").replace("비밀번호나", ""), re.I))

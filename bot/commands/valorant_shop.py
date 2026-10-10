@@ -45,6 +45,20 @@ class ValorantShop(commands.Cog):
             row = await store.get(s, user_id)
         return row.status if row else None
 
+    @shop.command(name="연동", description="개인 상점 계정 연동을 시작합니다.")
+    async def link(self, interaction: discord.Interaction) -> None:
+        if not vs.provider.available:       # 공식으로 허용된 연동 방식이 없으면 시작하지 않는다
+            await interaction.response.send_message(vs.UNSUPPORTED, ephemeral=True)
+            return
+        try:
+            url = await vs.provider.begin_link(interaction.user.id)
+        except Exception as exc:
+            log.warning("연동 시작 실패: %s", type(exc).__name__)
+            await interaction.response.send_message("연동을 시작하지 못했어요. 잠시 후 다시 시도해주세요.", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            f"아래 **공식 로그인 페이지**에서 직접 인증해주세요. 봇에는 비밀번호를 입력하지 마세요.\n{url}", ephemeral=True)
+
     @shop.command(name="연동상태", description="개인 상점 연동 상태를 확인합니다.")
     async def link_status(self, interaction: discord.Interaction) -> None:
         if not db.configured:

@@ -39,6 +39,11 @@ class ShopProvider(Protocol):
     name: str
     available: bool
 
+    async def begin_link(self, discord_user_id: int) -> str:
+        """Riot/제공자의 **공식 로그인 페이지** 주소를 돌려준다 (유저가 그 페이지에서 직접 인증).
+        봇은 비밀번호·쿠키를 받지 않는다."""
+        ...
+
     async def get_daily_store(self, discord_user_id: int) -> ShopResult: ...
     async def get_night_market(self, discord_user_id: int) -> ShopResult: ...
 
@@ -48,6 +53,9 @@ class NoShopProvider:
 
     name = "none"
     available = False
+
+    async def begin_link(self, discord_user_id: int) -> str:
+        raise ProviderNotConfigured("허용된 연동 방식이 없습니다.")
 
     async def get_daily_store(self, discord_user_id: int) -> ShopResult:
         raise ProviderNotConfigured("허용된 상점 데이터 제공자가 없습니다.")
