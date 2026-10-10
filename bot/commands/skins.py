@@ -538,6 +538,15 @@ class SkinCommands(commands.Cog):
         kw = await view.first_message()
         view.message = await interaction.followup.send(wait=True, **kw)
 
+    @app_commands.command(name="세트목록", description="모든 세트를 이미지 목록으로 훑어보고 골라서 봅니다. (이름을 안 쳐도 돼요)")
+    async def bundle_list(self, interaction: discord.Interaction) -> None:
+        cat = await self._catalog(interaction)
+        if cat is None:
+            return
+        view = SkinBrowser(cat, interaction.user.id)
+        kw = await view.first_message()
+        view.message = await interaction.followup.send(wait=True, **kw)
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(SkinCommands(bot))
