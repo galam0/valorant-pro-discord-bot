@@ -179,6 +179,8 @@ class SkinBrowser(discord.ui.View):
                     page = self._page_bundles()
                     got = await asyncio.gather(*(ss.fetch_icon(b) for b in page))
                     fetched = {b.uuid: g for b, g in zip(page, got)}
+                    tier_urls = {r.tier_icon for r in (ss.set_tier(b) for b in page) if r and r.tier_icon}
+                    fetched.update(await images.fetch_many({u: u for u in tier_urls}))
                     missing = [b.name for b in page if fetched.get(b.uuid) is None]
                     if missing:
                         log.warning("세트 그림 %d/%d개 없음: %s", len(missing), len(page), ", ".join(missing))

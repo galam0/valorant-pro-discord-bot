@@ -171,15 +171,25 @@ def render_set_grid(bundles: list, images: dict[str, Image.Image | None], page: 
         r, c = divmod(i, GRID_COLS)
         x = _MARGIN + c * (_CELL_W + _GAP)
         y = 84 + r * (_CELL_H + _GAP)
-        accent = _tier_rgb(b.skins[0].color if b.skins else None)
+        from bot.services.skin_service import set_tier, short_tier
+
+        rep = set_tier(b)
+        accent = _tier_rgb(rep.color if rep else None)
         d.rounded_rectangle([x, y, x + _CELL_W, y + _CELL_H], radius=14, fill=PANEL, outline=LINE)
         d.rounded_rectangle([x, y, x + _CELL_W, y + 4], radius=2, fill=accent)
         pic = images.get(b.uuid)
         if pic is not None:
             _paste_fit(img, pic, (x + 8, y + 12, x + _CELL_W - 8, y + 148))
-        name, f = fit_text(d, b.label or b.name, "bold", 16, _CELL_W - 20, min_size=12)
-        d.text((x + _CELL_W // 2, y + 172), name, font=f, fill=TEXT, anchor="mm")
-        d.text((x + _CELL_W // 2, y + 196), f"스킨 {len(b.skins)}개", font=font("regular", 13), fill=MUTED, anchor="mm")
+        tier_pic = images.get(rep.tier_icon or "") if rep else None
+        icon_w = 26 if tier_pic is not None else 0           # 이름 앞에 등급 아이콘
+        name, f = fit_text(d, b.label or b.name, "bold", 16, _CELL_W - 20 - icon_w, min_size=12)
+        total = icon_w + d.textlength(name, font=f)
+        left = x + (_CELL_W - total) / 2
+        if tier_pic is not None:
+            _icon(img, tier_pic, (int(left), y + 161), 22)
+        d.text((left + icon_w, y + 172), name, font=f, fill=TEXT, anchor="lm")
+        info = f"{short_tier(rep.tier)} · 스킨 {len(b.skins)}개" if rep and rep.tier else f"스킨 {len(b.skins)}개"
+        d.text((x + _CELL_W // 2, y + 196), info, font=font("regular", 13), fill=accent if rep and rep.tier else MUTED, anchor="mm")
         d.ellipse([x + 8, y + 12, x + 38, y + 42], fill=(0, 0, 0), outline=accent, width=2)
         d.text((x + 23, y + 27), str(start_no + i), font=font("bold", 15), fill=TEXT, anchor="mm")
     d.text((w // 2, h - 26), "아래 메뉴에서 번호의 세트를 고르면 자세히 보여줘요", font=font("regular", 15), fill=MUTED, anchor="mm")

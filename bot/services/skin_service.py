@@ -271,6 +271,21 @@ async def load(force: bool = False) -> Catalog:
 BIG_IMAGE = int(2.5 * 1024 * 1024)   # 세트 그림은 이 크기까지만 받는다 (원본 displayIcon 은 8MB가 넘기도 해서 느리고 메모리를 많이 씀)
 
 
+def set_tier(b: Bundle) -> Skin | None:
+    """세트의 대표 등급을 가진 스킨 (등급 아이콘·이름·색을 여기서 읽는다). 가장 많은 등급, 같으면 더 비싼 쪽."""
+    tiered = [s for s in b.skins if s.tier]
+    if not tiered:
+        return b.skins[0] if b.skins else None
+    count: dict[str, int] = {}
+    for s in tiered:
+        count[s.tier] = count.get(s.tier, 0) + 1
+    return max(tiered, key=lambda s: (count[s.tier], s.price or 0))
+
+
+def short_tier(name: str | None) -> str:
+    return re.sub(r"\s*에디션$", "", name or "")
+
+
 def icon_urls(b: Bundle) -> list[str]:
     """세트 그림 후보 주소: 세트 그림들 → 마지막엔 첫 스킨의 그림."""
     urls = list(b.icons) or ([b.icon] if b.icon else [])

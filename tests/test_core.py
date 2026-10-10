@@ -958,6 +958,19 @@ class IconUrlTest(unittest.TestCase):
         self.assertEqual(ss.icon_urls(ss.Bundle("b", "n", None, None, None, [])), [])
 
 
+class SetTierTest(unittest.TestCase):
+    def test_majority_tier_then_price(self):
+        from bot.services import skin_service as ss
+
+        mk = lambda tier, price: ss.Skin("s", "n", "w", tier, None, None, None, 0, 0, price=price)
+        b = ss.Bundle("b", "n", None, None, None, [mk("프리미엄 에디션", 1775), mk("얼티밋 에디션", 2175), mk("얼티밋 에디션", None)])
+        self.assertEqual(ss.set_tier(b).tier, "얼티밋 에디션")
+        b2 = ss.Bundle("b", "n", None, None, None, [mk("프리미엄 에디션", 1775), mk("얼티밋 에디션", 2175)])
+        self.assertEqual(ss.set_tier(b2).tier, "얼티밋 에디션")          # 같은 수면 더 비싼 쪽
+        self.assertIsNone(ss.set_tier(ss.Bundle("b", "n", None, None, None, [])))
+        self.assertEqual(ss.short_tier("얼티밋 에디션"), "얼티밋")
+
+
 class SetSortTest(unittest.TestCase):
     def test_numbers_then_english_then_korean(self):
         from bot.services.skin_service import sort_key
