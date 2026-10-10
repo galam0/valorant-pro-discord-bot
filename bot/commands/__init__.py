@@ -24,6 +24,7 @@ EXTENSIONS = (
     "bot.commands.games",
     "bot.commands.profile",
     "bot.commands.stocks",
+    "bot.commands.skins",
     "bot.commands.settings",
     "bot.commands.admin",
 )

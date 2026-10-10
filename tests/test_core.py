@@ -861,3 +861,40 @@ class MatchAlertTest(unittest.TestCase):
         scheduler._scheduler = None
         sys.modules.pop("bot.database.repository", None)
         del dbpkg.repository
+
+
+class SkinCatalogTest(unittest.TestCase):
+    def _cat(self):
+        from bot.services import skin_service as ss
+
+        weapons = [{"displayName": "밴달", "skins": [
+            {"uuid": "s0", "displayName": "기본 밴달", "themeUuid": ss.STANDARD_THEME, "contentTierUuid": None,
+             "displayIcon": "u0", "levels": [], "chromas": []},
+            {"uuid": "s1", "displayName": "리버 밴달", "themeUuid": "t1", "contentTierUuid": "c1", "displayIcon": None,
+             "levels": [{"displayIcon": "u1"}] * 4, "chromas": [{}] * 4},
+            {"uuid": "s2", "displayName": "무작위 선호 스킨", "themeUuid": "t1", "contentTierUuid": "c1", "levels": [], "chromas": []}]},
+            {"displayName": "근접 무기", "skins": [
+                {"uuid": "s3", "displayName": "리버 단검", "themeUuid": "t1", "contentTierUuid": "c1",
+                 "displayIcon": "u3", "levels": [{}], "chromas": []}]}]
+        tiers = [{"uuid": "c1", "displayName": "얼티밋 에디션", "highlightColor": "f5955cff"}]
+        themes = [{"uuid": "t1", "displayName": "리버 컬렉션"}]
+        bundles = [{"uuid": "b1", "displayName": "리버", "displayNameSubText": "컬렉션", "description": "d", "displayIcon": "bi"},
+                   {"uuid": "b2", "displayName": "없는 번들", "displayIcon": None, "displayIcon2": "x"}]
+        return ss, ss.parse_catalog(weapons, tiers, themes, bundles)
+
+    def test_parse_filters_and_links(self):
+        ss, cat = self._cat()
+        self.assertEqual([s.uuid for s in cat.skins], ["s1", "s3"])      # 기본/무작위 스킨 제외
+        s = cat.skins[0]
+        self.assertEqual((s.icon, s.tier, s.color, s.chromas, s.levels), ("u1", "얼티밋 에디션", 0xF5955C, 4, 4))
+        self.assertEqual([x.uuid for x in cat.bundles[0].skins], ["s1", "s3"])   # '리버 컬렉션' 테마 = '리버' 번들
+        self.assertEqual(cat.bundles[1].skins, [])
+        self.assertEqual(cat.bundles[1].icon, "x")
+
+    def test_search(self):
+        ss, cat = self._cat()
+        self.assertEqual([s.uuid for s in ss.search_skins(cat, "리버 밴달")], ["s1"])
+        self.assertEqual([s.uuid for s in ss.search_skins(cat, "밴달 리버")], ["s1"])
+        self.assertEqual(len(ss.search_skins(cat, "리버")), 2)
+        self.assertEqual(ss.search_skins(cat, "없음없음"), [])
+        self.assertEqual([b.uuid for b in ss.search_bundles(cat, "리")], ["b1"])

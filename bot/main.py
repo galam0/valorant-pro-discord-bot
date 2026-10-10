@@ -170,6 +170,8 @@ class ValorantBot(commands.Bot):
             return
         self._commands_synced = True
         asyncio.create_task(self._prewarm_games())
+        from bot.services import skin_service
+        skin_service.cached()   # 스킨 목록을 미리 불러오기 시작 (자동완성이 바로 뜨도록)
         ok = 0
         for guild in self.guilds:
             try:
