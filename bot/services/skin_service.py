@@ -349,6 +349,8 @@ async def load(force: bool = False) -> Catalog:
                 _get_json(session, "weapons"), _get_json(session, "contenttiers"),
                 _get_json(session, "themes"), _get_json(session, "bundles"), _melee_en(session))
         cat = parse_catalog(weapons, tiers, themes, bundles, melee_en)
+        log.info("근접 무기 영어 이름(어림값): %s", " | ".join(
+            f"{melee_en.get(s.uuid, '?')}={short_tier(s.tier)}" for s in cat.skins if s.melee and s.approx))
         cat.loaded_at = time.monotonic()
         _catalog = cat
         log.info("스킨 목록 불러옴: 스킨 %d · 번들 %d", len(cat.skins), len(cat.bundles))
