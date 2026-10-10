@@ -72,6 +72,10 @@ async def _download(url: str, max_bytes: int = MAX_BYTES) -> tuple[str, bytes | 
         session = await _get_session()
         async with session.get(url) as resp:
             if resp.status == 200:
+                length = int((getattr(resp, "headers", None) or {}).get("Content-Length") or 0)
+                if length > max_bytes:   # 받기 전에 크기를 보고 거른다
+                    log.info("[성능] 큰 그림 건너뜀 (%dKB): %s", length // 1024, url)
+                    return "missing", None
                 # StreamReader.read(n) 은 지금 버퍼에 있는 만큼만 돌려줘서 이미지가 잘릴 수 있다 → 끝까지 이어 받는다
                 raw = bytearray()
                 async for chunk in resp.content.iter_chunked(65536):
@@ -135,7 +139,7 @@ def _decode_big(raw: bytes, size: int) -> Image.Image | None:
 _BIG_CACHE: "OrderedDict[str, Image.Image]" = OrderedDict()
 
 
-async def fetch_big(url: str | None, size: int = 640) -> Image.Image | None:
+async def fetch_big(url: str | None, size: int = 640, max_bytes: int = MAX_BYTES) -> Image.Image | None:
     """퀴즈 그림처럼 크게 쓰는 이미지 (작은 캐시 40장). 실패하면 None."""
     if not url or not url.startswith("https://"):
         return None
@@ -143,10 +147,10 @@ async def fetch_big(url: str | None, size: int = 640) -> Image.Image | None:
         _BIG_CACHE.move_to_end(url)
         return _BIG_CACHE[url]
     async with _SEM:
-        state, raw = await _download(url)
+        state, raw = await _download(url, max_bytes)
         if state == "retry":
             await asyncio.sleep(0.5)
-            state, raw = await _download(url)
+            state, raw = await _download(url, max_bytes)
     if raw is None:
         return None
     img = await asyncio.to_thread(_decode_big, raw, size)

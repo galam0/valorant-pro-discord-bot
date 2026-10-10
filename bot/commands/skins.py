@@ -132,11 +132,11 @@ class SkinBrowser(discord.ui.View):
         nxt = (self.page + 1) % self._pages()
         if nxt == self.page or (id(self.cat), nxt) in _GRID_CACHE:
             return
-        urls = [ss.icon_url(b) for b in self.cat.bundles[nxt * PAGE:(nxt + 1) * PAGE]]
+        nxt_bundles = self.cat.bundles[nxt * PAGE:(nxt + 1) * PAGE]
 
         async def run() -> None:
-            for u in urls:
-                await images.fetch_image(u, ss.BIG_IMAGE)
+            for b in nxt_bundles:
+                await ss.fetch_icon(b)
 
         try:
             asyncio.get_running_loop().create_task(run())
@@ -177,7 +177,8 @@ class SkinBrowser(discord.ui.View):
                 png = _GRID_CACHE.get(ck)
                 if png is None:
                     page = self._page_bundles()
-                    fetched = await images.fetch_many({b.uuid: ss.icon_url(b) for b in page}, ss.BIG_IMAGE)
+                    got = await asyncio.gather(*(ss.fetch_icon(b) for b in page))
+                    fetched = {b.uuid: g for b, g in zip(page, got)}
                     missing = [b.name for b in page if fetched.get(b.uuid) is None]
                     if missing:
                         log.warning("세트 그림 %d/%d개 없음: %s", len(missing), len(page), ", ".join(missing))
@@ -191,7 +192,7 @@ class SkinBrowser(discord.ui.View):
             if self.mode == "set":
                 urls = {s.tier_icon for s in self.bundle.skins[:10] if s.tier_icon}
                 fetched = await images.fetch_many({u: u for u in urls})
-                fetched["bundle"] = await images.fetch_big(self.bundle.icon, 700)
+                fetched["bundle"] = await ss.fetch_icon(self.bundle, big=True)
                 png = await asyncio.to_thread(render_set_card, self.bundle, fetched)
                 return discord.File(BytesIO(png), filename="set.png"), None
         except Exception as exc:

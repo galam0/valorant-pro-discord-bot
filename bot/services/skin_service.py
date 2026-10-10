@@ -64,6 +64,7 @@ class Bundle:
     label: str = ""                 # 이름이 같은 세트끼리 구분되는 이름 (예: 'RGX 11z 프로 (2.0)')
     asset_path: str | None = None
     version: str | None = None
+    icons: list[str] = field(default_factory=list)   # 세트 그림 후보 (작은 것부터)
 
 
 @dataclass
@@ -181,7 +182,8 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
         members = (by_theme.get(bk + ver.replace(".", ""), []) if ver else []) or (by_theme.get(bk, []) if bk else [])
         bundle = Bundle(b["uuid"], name, b.get("displayNameSubText"), b.get("extraDescription") or b.get("description"),
                         b.get("displayIcon") or b.get("displayIcon2") or b.get("verticalPromoImage"), members, name,
-                        b.get("assetPath"), ver)
+                        b.get("assetPath"), ver,
+                        [u for u in (b.get("displayIcon2"), b.get("displayIcon"), b.get("verticalPromoImage")) if u])
         versions[bundle.uuid] = ver
         if members:                 # 스킨이 없는 세트(분무기·카드만 있는 묶음 등)는 뺀다
             out.append(bundle)
@@ -266,12 +268,25 @@ async def load(force: bool = False) -> Catalog:
         return cat
 
 
-BIG_IMAGE = 8 * 1024 * 1024    # 세트 그림은 크기가 커서 일반 이미지(3MB)보다 넉넉히 받는다 (메모리 때문에 8MB까지만)
+BIG_IMAGE = int(2.5 * 1024 * 1024)   # 세트 그림은 이 크기까지만 받는다 (원본 displayIcon 은 8MB가 넘기도 해서 느리고 메모리를 많이 씀)
 
 
-def icon_url(b: Bundle) -> str | None:
-    """세트 그림 주소. 없으면 첫 스킨의 그림으로 대신한다."""
-    return b.icon or next((s.icon for s in b.skins if s.icon), None)
+def icon_urls(b: Bundle) -> list[str]:
+    """세트 그림 후보 주소: 세트 그림들 → 마지막엔 첫 스킨의 그림."""
+    urls = list(b.icons) or ([b.icon] if b.icon else [])
+    urls += [s.icon for s in b.skins[:1] if s.icon]
+    return urls
+
+
+async def fetch_icon(b: Bundle, big: bool = False):
+    """후보를 차례로 시도해 처음 받아지는 그림을 돌려준다 (너무 큰 파일은 받기 전에 건너뜀)."""
+    from bot.render import images
+
+    for u in icon_urls(b):
+        img = await (images.fetch_big(u, 700, BIG_IMAGE) if big else images.fetch_image(u, BIG_IMAGE))
+        if img is not None:
+            return img
+    return None
 
 
 async def warm_icons(cat: Catalog, first: int = 0) -> None:
@@ -280,14 +295,12 @@ async def warm_icons(cat: Catalog, first: int = 0) -> None:
     메모리·CPU가 작은 서버라서 한 장씩, 천천히 받는다 (그림 풀기는 images._DECODE 로 한 번에 한 장).
     first: 이 번호부터 먼저 받는다 (보고 있는 쪽 다음 쪽을 먼저).
     """
-    from bot.render import images
-
     order = cat.bundles[first:] + cat.bundles[:first]
     t0 = time.monotonic()
     ok = 0
     try:
         for b in order:
-            if await images.fetch_image(icon_url(b), BIG_IMAGE) is not None:
+            if await fetch_icon(b) is not None:
                 ok += 1
             await asyncio.sleep(0.2)
     except Exception as exc:

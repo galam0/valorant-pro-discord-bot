@@ -948,13 +948,14 @@ class DuplicateBundleTest(unittest.TestCase):
 
 
 class IconUrlTest(unittest.TestCase):
-    def test_fallback_to_skin_icon(self):
+    def test_candidates_end_with_skin_icon(self):
         from bot.services import skin_service as ss
 
         sk = ss.Skin("s", "n", "w", None, None, "skin-icon", None, 0, 0)
-        self.assertEqual(ss.icon_url(ss.Bundle("b", "n", None, None, "bundle-icon", [sk])), "bundle-icon")
-        self.assertEqual(ss.icon_url(ss.Bundle("b", "n", None, None, None, [sk])), "skin-icon")
-        self.assertIsNone(ss.icon_url(ss.Bundle("b", "n", None, None, None, [])))
+        b = ss.Bundle("b", "n", None, None, "big", [sk], icons=["small", "big"])
+        self.assertEqual(ss.icon_urls(b), ["small", "big", "skin-icon"])
+        self.assertEqual(ss.icon_urls(ss.Bundle("b", "n", None, None, None, [sk])), ["skin-icon"])
+        self.assertEqual(ss.icon_urls(ss.Bundle("b", "n", None, None, None, [])), [])
 
 
 class SetSortTest(unittest.TestCase):
