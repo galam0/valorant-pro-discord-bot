@@ -289,6 +289,7 @@ async def load(force: bool = False) -> Catalog:
         cat.loaded_at = time.monotonic()
         _catalog = cat
         log.info("스킨 목록 불러옴: 스킨 %d · 번들 %d", len(cat.skins), len(cat.bundles))
+        log.info("목록에 있는 세트 %d개: %s", len(cat.bundles), ", ".join(f"{b.name}[{len(b.skins)}]" for b in cat.bundles))
         if cat.dropped:
             log.info("목록에서 빠진 세트 %d개: %s", len(cat.dropped), ", ".join(f"{n}({r})" for n, r in cat.dropped))
         return cat
