@@ -49,6 +49,8 @@ def skin_embed(s: ss.Skin, idx: int = 0) -> discord.Embed:
         lines.append(f"가격 **{ss.price_text(s)}**")
     elif s.reward:
         lines.append("가격 **패스 보상** (상점 판매 아님)")
+    elif s.capsule:
+        lines.append("가격 **팀 캡슐 전용** (단품 판매 안 함)")
     lines.append(f"레벨 {s.levels}개 · 색상 변형 {s.chromas}개")
     e.description = "\n".join(lines)
     label, image = s.variants[idx][0], s.variants[idx][1]

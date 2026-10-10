@@ -47,6 +47,17 @@ MELEE_PRICE_EN = {   # 출처: THESPIKE.GG 근접 무기 가격 목록 (2026), G
     5850: "VCT Karambit; 2025 VCT Karambit; VCT 2025 Karambit",
     5950: "Power Fist",
 }
+# 익스클루시브 총기는 세트마다 값이 다르다 → 컬렉션(테마) 한국어 이름으로 실제 가격. 없으면 '약 2,175'.
+# 출처: Dot Esports·PCGamesN·THESPIKE·win.gg 가격 목록 (2026)
+EXCLUSIVE_GUN_PRICE = {
+    2175: "둠브링어, 글리치팝, 돌미르의 복수, 네오 프런티어, 빛의 감시자, 블라스트X, 싱귤래러티, 미스트블룸, RGX 11z 프로, "
+          "다이버전스, 아락시스, 크로노보이드, 혼돈의 서막, 임페리움, 프리모디움, 아케인 컬렉터 세트, 오버드라이브, 로그, "
+          "검은 가시, 홀로 메리디안, 사이랙스, 녹터넘, 죽음의 풍선껌, 대몰락",
+    2375: "쿠로나미, EX.O, 에리스, 스플래시X, 아야카시",
+    2675: "2021 챔피언스, 2022 챔피언스, 2023 챔피언스, 2024 챔피언스, 2025 챔피언스, 2026 챔피언스, 스펙트럼",
+}
+EXCLUSIVE_GUN = {n: p for p, names in EXCLUSIVE_GUN_PRICE.items() for n in names.split(", ")}
+_CAPSULE_THEME = re.compile(r"^VCT\d*\s*x\s", re.I)
 MELEE_WEAPON = "2f59173c-4bed-b6c3-2191-dea9b58be9c7"
 
 
@@ -79,6 +90,7 @@ class Skin:
     melee: bool = False
     label: str = ""          # 목록·선택 메뉴에 보일 이름 (이름이 같은 스킨끼리는 구분 글자가 붙음)
     reward: bool = False     # 배틀패스·이벤트 패스 보상 (상점 판매 아님)
+    capsule: bool = False    # VCT 팀 캡슐 전용 (단품 판매 안 함)
     approx: bool = False     # 가격이 어림값인지 (익스클루시브 총기, 가격표에 없는 근접 무기)
 
 
@@ -218,6 +230,14 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
                 count[g.tier] = count.get(g.tier, 0) + 1
             ref = max(guns, key=lambda g: count[g.tier])
             sk.tier, sk.color, sk.tier_icon = ref.tier, ref.color, ref.tier_icon
+
+    for sk in skins:
+        if sk.melee or sk.reward or not sk.approx:
+            continue
+        if _CAPSULE_THEME.search(sk.theme or ""):
+            sk.price, sk.approx, sk.capsule = None, False, True      # 팀 캡슐 클래식: 단품 판매 없음
+        elif (sk.theme or "") in EXCLUSIVE_GUN:
+            sk.price, sk.approx = EXCLUSIVE_GUN[sk.theme], False
 
     _disambiguate(skins)
     by_theme: dict[str, list[Skin]] = {}
