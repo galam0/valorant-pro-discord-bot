@@ -18,6 +18,7 @@ from bot.render.skin_card import render_set_card, render_skin_card
 from bot.services import skin_service as ss, tier_emoji
 
 log = logging.getLogger("valobot.cmd.skins")
+PAGE = 25   # 선택 메뉴는 한 번에 25개까지
 
 
 async def skin_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
@@ -80,7 +81,7 @@ class SkinBrowser(discord.ui.View):
     def __init__(self, cat: ss.Catalog, owner_id: int, skin: ss.Skin | None = None, bundle: ss.Bundle | None = None) -> None:
         super().__init__(timeout=300)
         self.cat, self.owner_id = cat, owner_id
-        self.skin, self.bundle, self.idx = skin, bundle, 0
+        self.skin, self.bundle, self.idx, self.page = skin, bundle, 0, 0
         self.message: discord.Message | None = None
         self._build()
 
@@ -107,6 +108,9 @@ class SkinBrowser(discord.ui.View):
         elif self.mode == "set":
             self.add_item(discord.ui.Button(label="🎬 트레일러 (한국어 검색)", url=ss.trailer_url(self.bundle.label or self.bundle.name)))
             self._button("📋 세트 목록", self._to_list)
+        elif len(self.cat.bundles) > PAGE:
+            self._button("◀ 이전", self._prev_page)
+            self._button("다음 ▶", self._next_page)
         options = self._options()
         if options:
             sel = discord.ui.Select(placeholder="스킨 고르기" if self.mode != "list" else "세트 고르기",
@@ -119,10 +123,13 @@ class SkinBrowser(discord.ui.View):
         b.callback = callback
         self.add_item(b)
 
+    def _page_bundles(self) -> list[ss.Bundle]:
+        return self.cat.bundles[self.page * PAGE:(self.page + 1) * PAGE]
+
     def _options(self) -> list[discord.SelectOption]:
         if self.mode == "list":
             return [discord.SelectOption(label=(b.label or b.name)[:100], value=b.uuid, description=f"스킨 {len(b.skins)}개"[:100] if b.skins else None)
-                    for b in self.cat.bundles[:25]]
+                    for b in self._page_bundles()]
         if self.bundle is None:
             return []
         out = []
@@ -159,9 +166,10 @@ class SkinBrowser(discord.ui.View):
             return skin_embed(self.skin, self.idx)
         if self.mode == "set":
             return bundle_embed(self.bundle)
-        names = "\n".join(f"· {b.label or b.name}" for b in self.cat.bundles[:25])
+        names = "\n".join(f"· {b.label or b.name}" for b in self._page_bundles())
         e = discord.Embed(title="🎁 세트 목록", description=names or "없음", color=COLOR_MAIN)
-        e.set_footer(text=f"전체 {len(self.cat.bundles)}개 · 아래에서 고르거나 /세트 이름 으로 검색해요")
+        pages = max(1, -(-len(self.cat.bundles) // PAGE))
+        e.set_footer(text=f"전체 {len(self.cat.bundles)}개 · {self.page + 1}/{pages}쪽 · 아래에서 고르거나 /세트 이름 으로 검색해요")
         return e
 
     async def first_message(self) -> dict:
@@ -196,6 +204,17 @@ class SkinBrowser(discord.ui.View):
 
     async def _next(self, interaction: discord.Interaction) -> None:
         await self._step(interaction, 1)
+
+    async def _turn_page(self, interaction: discord.Interaction, step: int) -> None:
+        pages = max(1, -(-len(self.cat.bundles) // PAGE))
+        self.page = (self.page + step) % pages
+        await self._show(interaction)
+
+    async def _prev_page(self, interaction: discord.Interaction) -> None:
+        await self._turn_page(interaction, -1)
+
+    async def _next_page(self, interaction: discord.Interaction) -> None:
+        await self._turn_page(interaction, 1)
 
     async def _play(self, interaction: discord.Interaction) -> None:
         url = self._video()
