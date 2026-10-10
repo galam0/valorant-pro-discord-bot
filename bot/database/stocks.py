@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.database import economy
-from bot.database.models import Stock, StockHistory, StockHolding, Team
+from bot.database.models import Stock, StockHistory, StockHolding, Team, WalletLedger
 
 
 class NotEnoughShares(Exception):
@@ -118,3 +118,13 @@ async def guild_holdings(session: AsyncSession, guild_id: int) -> list[StockHold
     """서버 전체의 보유 주식 (랭킹용)."""
     rows = await session.execute(select(StockHolding).where(StockHolding.guild_id == guild_id, StockHolding.shares > 0))
     return list(rows.scalars())
+
+
+async def trade_history(session: AsyncSession, guild_id: int, user_id: int, limit: int = 15) -> list[tuple[str, int, str | None, datetime]]:
+    """최근 주식 거래 (reason, VP 변화, ref, 시각) — 새것부터. 지갑 장부를 그대로 읽으므로 별도 테이블이 없다."""
+    rows = await session.execute(
+        select(WalletLedger.reason, WalletLedger.delta, WalletLedger.ref, WalletLedger.created_at)
+        .where(WalletLedger.guild_id == guild_id, WalletLedger.user_id == user_id,
+               WalletLedger.reason.in_(("stock_buy", "stock_sell")))
+        .order_by(WalletLedger.created_at.desc(), WalletLedger.id.desc()).limit(limit))
+    return [(r, int(d), ref, at) for r, d, ref, at in rows.all()]

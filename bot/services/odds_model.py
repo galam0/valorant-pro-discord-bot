@@ -174,3 +174,15 @@ CANCEL_FEE_PCT = 10    # 예측을 직접 취소할 때 떼는 수수료(%)
 def cancel_fee(stake: int) -> int:
     """직접 취소 수수료 (걸었던 VP의 10%, 소수점 버림). 경기 취소·연기로 인한 자동 환불에는 없다."""
     return stake * CANCEL_FEE_PCT // 100
+
+
+def pick_fans(rows: list[tuple[int, str | None]], team1: str, team2: str, limit: int = 20) -> list[int]:
+    """(유저, 응원 팀) 목록에서 이 경기의 두 팀 중 하나를 응원하는 유저 ID (앞에서 limit명, 중복 제거)."""
+    teams = {norm(team1), norm(team2)} - {""}
+    out: list[int] = []
+    for uid, fav in rows:
+        if fav and norm(fav) in teams and uid not in out:
+            out.append(uid)
+            if len(out) >= limit:
+                break
+    return out

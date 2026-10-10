@@ -272,3 +272,11 @@ async def set_guild_channel(session: AsyncSession, guild_id: int, field: str, ch
     stmt = stmt.on_conflict_do_update(index_elements=[GuildSetting.guild_id],
                                       set_={field: channel_id, "updated_at": func.now()})
     await session.execute(stmt)
+
+
+async def fav_team_rows(session, guild_id: int) -> list[tuple[int, str | None]]:
+    """서버에서 응원 팀을 정해 둔 유저들 (유저, 응원 팀) — 경기 시작 알림에서 멘션할 사람을 찾는 데 쓴다."""
+    from sqlalchemy import select
+
+    rows = await session.execute(select(Profile.user_id, Profile.fav_team).where(Profile.guild_id == guild_id, Profile.fav_team.is_not(None)))
+    return [(int(u), t) for u, t in rows.all()]

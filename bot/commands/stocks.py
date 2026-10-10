@@ -12,6 +12,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.database.database import db
+from bot.embeds.stock import history_embed
 from bot.embeds.common import COLOR_INFO, COLOR_MAIN, COLOR_OK, error_embed, ts
 from bot.render import images
 from bot.render.base import render_enabled
@@ -165,6 +166,14 @@ class StockCommands(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         rows, cash = await ss.portfolio(interaction.guild_id, interaction.user.id)
         await interaction.followup.send(embed=portfolio_embed(rows, cash, interaction.user.display_name), ephemeral=True)
+
+    @app_commands.command(name="거래내역", description="내 최근 주식 거래 내역을 봅니다.")
+    async def trade_log(self, interaction: discord.Interaction) -> None:
+        if not await self._guard(interaction):
+            return
+        await interaction.response.defer(ephemeral=True)
+        rows = await ss.history_log(interaction.guild_id, interaction.user.id)
+        await interaction.followup.send(embed=history_embed(rows, interaction.user.display_name), ephemeral=True)
 
     @app_commands.command(name="주식순위", description="이 서버에서 주식으로 가장 많이 번 사람을 봅니다.")
     async def stock_rank(self, interaction: discord.Interaction) -> None:

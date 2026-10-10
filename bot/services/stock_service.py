@@ -136,11 +136,28 @@ async def history(symbol: str | None, limit: int = 48) -> dict[str, list[int]]:
 # ---------------------------------------------------------------------------
 
 
-async def tick() -> None:
-    """시간당 잡음 + 기준가로의 평균 회귀."""
+async def tick() -> list[tuple[str, int, int, float]]:
+    """시간당 잡음 + 기준가로의 평균 회귀. 크게 움직인 종목 [(종목, 이전가, 새 가격, 등락률%)] 을 돌려준다."""
     async with db.session() as s:
         await stocks.ensure_stocks(s, sm.STOCKS)
-        prices = await stocks.get_prices(s)
+        before = await stocks.get_prices(s)
+        after: dict[str, int] = {}
         for d in sm.STOCKS:
-            await stocks.set_price(s, d.symbol, sm.noise_step(prices.get(d.symbol, d.base), d.base), "tick")
+            after[d.symbol] = sm.noise_step(before.get(d.symbol, d.base), d.base)
+            await stocks.set_price(s, d.symbol, after[d.symbol], "tick")
         await s.commit()
+    return sm.find_surges(before, after)
+
+
+async def history_log(guild_id: int, user_id: int, limit: int = 15) -> list[tuple[str, str, int, int, int, "object"]]:
+    """최근 거래 [(종류 buy/sell, 종목 이름, 수량, 가격, VP 변화, 시각)]. 형식을 읽을 수 없는 줄은 건너뛴다."""
+    async with db.session() as s:
+        rows = await stocks.trade_history(s, guild_id, user_id, limit)
+    out = []
+    for reason, delta, ref, at in rows:
+        parsed = sm.parse_trade_ref(ref)
+        if parsed is None or parsed[0] not in sm.BY_SYMBOL:
+            continue
+        sym, qty, price = parsed
+        out.append(("buy" if reason == "stock_buy" else "sell", sm.BY_SYMBOL[sym].name, qty, price, delta, at))
+    return out

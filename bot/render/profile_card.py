@@ -79,6 +79,32 @@ def _avatar(size: int, avatar: Image.Image | None, name: str, accent) -> Image.I
     return out
 
 
+def _hue_color(t: float) -> tuple[int, int, int]:
+    """t(0~1) → 무지개 색 (RAINBOW 색들 사이를 부드럽게 이어서 한 바퀴)."""
+    n = len(RAINBOW)
+    pos = (t % 1.0) * n
+    i, f = int(pos), pos - int(pos)
+    a, b = RAINBOW[i % n], RAINBOW[(i + 1) % n]
+    return tuple(int(a[k] + (b[k] - a[k]) * f) for k in range(3))
+
+
+def _rainbow_fill(img: Image.Image, poly: list[tuple[float, float]]) -> None:
+    """다각형 안을 중심 기준 각도에 따라 색이 이어지는 무지개 그라데이션으로 채운다 (끊김 없는 링)."""
+    xs, ys = [p[0] for p in poly], [p[1] for p in poly]
+    x0, y0, x1, y1 = int(min(xs)) - 1, int(min(ys)) - 1, int(max(xs)) + 2, int(max(ys)) + 2
+    w, h = x1 - x0, y1 - y0
+    cx, cy = w / 2, h / 2
+    grad = Image.new("RGB", (w, h))
+    px = grad.load()
+    for y in range(h):
+        for x in range(w):
+            ang = (math.atan2(y - cy, x - cx) / (2 * math.pi) + 0.25) % 1.0
+            px[x, y] = _hue_color(ang)
+    mask = Image.new("L", (w * 3, h * 3), 0)
+    ImageDraw.Draw(mask).polygon([((px_ - x0) * 3, (py_ - y0) * 3) for px_, py_ in poly], fill=255)
+    img.paste(grad, (x0, y0), mask.resize((w, h), Image.LANCZOS))
+
+
 def _draw_frame(img: Image.Image, x0: int, y0: int, s: int, frame: str) -> None:
     """팔각형 아바타(x0, y0, 한 변 s) 바깥에 테두리를 그린다 (두께 16)."""
     d = ImageDraw.Draw(img)
@@ -89,13 +115,7 @@ def _draw_frame(img: Image.Image, x0: int, y0: int, s: int, frame: str) -> None:
     outer = _octagon(x0 - t, y0 - t, s + 2 * t)
     d.polygon(_octagon(x0 - t - 4, y0 - t - 4, s + 2 * t + 8), fill=NAVY)
     if frame == "frame_rainbow":
-        mid = _octagon(x0 - t / 2, y0 - t / 2, s + t)      # 링의 가운데 선 (두께 t)
-        n = len(mid)
-        for i in range(n):
-            col = RAINBOW[i % len(RAINBOW)]
-            a, b = mid[i], mid[(i + 1) % n]
-            d.line([a, b], fill=col, width=t)
-            d.ellipse([a[0] - t / 2, a[1] - t / 2, a[0] + t / 2, a[1] + t / 2], fill=col)
+        _rainbow_fill(img, outer)
     else:
         main, dark = FRAME_COLORS[frame]
         d.polygon(outer, fill=main)

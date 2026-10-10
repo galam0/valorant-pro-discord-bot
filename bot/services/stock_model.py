@@ -148,3 +148,27 @@ def rank_investors(holdings: list[tuple[int, str, int, int]], prices: dict[str, 
         a[1] += cost
     out = [(uid, v, v - c, ((v - c) / c * 100) if c > 0 else 0.0) for uid, (v, c) in agg.items()]
     return sorted(out, key=lambda r: (-r[2], r[0]))
+
+
+SURGE_PCT = 6.0      # 한 번에 이만큼(%) 이상 오르내리면 알림 채널에 알린다
+
+
+def find_surges(before: dict[str, int], after: dict[str, int], threshold: float = SURGE_PCT) -> list[tuple[str, int, int, float]]:
+    """[(종목, 이전가, 새 가격, 등락률%)] — 등락 폭이 큰 순. 아는 종목만, 이전 가격이 없으면 건너뛴다."""
+    out = []
+    for sym, new in after.items():
+        old = before.get(sym)
+        if sym not in BY_SYMBOL or not old:
+            continue
+        pct = (new - old) / old * 100
+        if abs(pct) >= threshold:
+            out.append((sym, old, new, pct))
+    return sorted(out, key=lambda r: -abs(r[3]))
+
+
+def parse_trade_ref(ref: str | None) -> tuple[str, int, int] | None:
+    """장부(ledger)의 ref 'GENx10@1020' → ('GEN', 10, 1020). 형식이 다르면 None."""
+    import re
+
+    m = re.fullmatch(r"([A-Z0-9]+)x(\d+)@(\d+)", ref or "")
+    return (m.group(1), int(m.group(2)), int(m.group(3))) if m else None

@@ -871,7 +871,9 @@ class SkinCatalogTest(unittest.TestCase):
             {"uuid": "s0", "displayName": "기본 밴달", "themeUuid": ss.STANDARD_THEME, "contentTierUuid": None,
              "displayIcon": "u0", "levels": [], "chromas": []},
             {"uuid": "s1", "displayName": "리버 밴달", "themeUuid": "t1", "contentTierUuid": "c1", "displayIcon": None,
-             "levels": [{"displayIcon": "u1"}] * 4, "chromas": [{}] * 4},
+             "levels": [{"displayIcon": "u1"}] * 4,
+             "chromas": [{"displayName": "리버 밴달 (보라색)", "fullRender": "c1"}, {"displayName": "리버 밴달 (초록색)", "displayIcon": "c2"},
+                         {"displayName": "x", "fullRender": "u1"}, {}]},
             {"uuid": "s2", "displayName": "무작위 선호 스킨", "themeUuid": "t1", "contentTierUuid": "c1", "levels": [], "chromas": []}]},
             {"displayName": "근접 무기", "skins": [
                 {"uuid": "s3", "displayName": "리버 단검", "themeUuid": "t1", "contentTierUuid": "c1",
@@ -887,6 +889,7 @@ class SkinCatalogTest(unittest.TestCase):
         self.assertEqual([s.uuid for s in cat.skins], ["s1", "s3"])      # 기본/무작위 스킨 제외
         s = cat.skins[0]
         self.assertEqual((s.icon, s.tier, s.color, s.chromas, s.levels), ("u1", "얼티밋 에디션", 0xF5955C, 4, 4))
+        self.assertEqual(s.variants, [("기본", "u1"), ("보라색", "c1"), ("초록색", "c2")])   # 같은 이미지·빈 이미지는 제외
         self.assertEqual([x.uuid for x in cat.bundles[0].skins], ["s1", "s3"])   # '리버 컬렉션' 테마 = '리버' 번들
         self.assertEqual(cat.bundles[1].skins, [])
         self.assertEqual(cat.bundles[1].icon, "x")
@@ -896,5 +899,39 @@ class SkinCatalogTest(unittest.TestCase):
         self.assertEqual([s.uuid for s in ss.search_skins(cat, "리버 밴달")], ["s1"])
         self.assertEqual([s.uuid for s in ss.search_skins(cat, "밴달 리버")], ["s1"])
         self.assertEqual(len(ss.search_skins(cat, "리버")), 2)
+        self.assertEqual(cat.skins[0].variants[0], ("기본", "u1"))
         self.assertEqual(ss.search_skins(cat, "없음없음"), [])
         self.assertEqual([b.uuid for b in ss.search_bundles(cat, "리")], ["b1"])
+
+
+class PickFansTest(unittest.TestCase):
+    def test_pick_fans(self):
+        from bot.services.odds_model import pick_fans
+
+        rows = [(1, "Gen.G"), (2, "t1"), (3, None), (4, "Paper Rex"), (1, "Gen.G"), (5, "GEN G")]
+        self.assertEqual(pick_fans(rows, "Gen.G", "T1"), [1, 2, 5])          # 대소문자·기호 무시, 중복 제거
+        self.assertEqual(pick_fans(rows, "Gen.G", "T1", limit=2), [1, 2])
+        self.assertEqual(pick_fans(rows, "TBD", ""), [])
+
+
+class StockExtrasTest(unittest.TestCase):
+    def test_find_surges(self):
+        from bot.services import stock_model as sm
+
+        a, b, c = (d.symbol for d in sm.STOCKS[:3])
+        out = sm.find_surges({a: 1000, b: 1000, c: 1000, "ZZZ": 10}, {a: 1070, b: 930, c: 1030, "ZZZ": 100, "NEW": 5})
+        self.assertEqual([(s, round(p)) for s, _, _, p in out], [(a, 7), (b, -7)])    # 6% 미만·모르는 종목·이전가 없음은 제외
+
+    def test_parse_trade_ref(self):
+        from bot.services.stock_model import parse_trade_ref
+
+        self.assertEqual(parse_trade_ref("GENx10@1020"), ("GEN", 10, 1020))
+        self.assertIsNone(parse_trade_ref("prediction:12"))
+        self.assertIsNone(parse_trade_ref(None))
+
+    def test_rainbow_frame_renders_continuous(self):
+        from bot.render.profile_card import render_profile_card
+
+        png = render_profile_card(dict(name="a", title="x", vp=1, rank=1, pred_win=0, pred_total=0, fav_team=None, fav_agent=None,
+                                       theme="theme_default", frame="frame_rainbow"))
+        self.assertTrue(png.startswith(b"\x89PNG"))

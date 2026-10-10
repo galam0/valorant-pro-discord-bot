@@ -92,8 +92,16 @@ async def _schedule_alerts() -> None:
 async def _send_alert(team1: str, team2: str, tournament: str | None, scheduled_at) -> None:
     from bot.embeds.prediction import match_alert_embed
 
+    async def fans_for(guild_id: int) -> list[int]:
+        from bot.database import economy
+        from bot.services import odds_model
+
+        async with db.session() as s:
+            rows = await economy.fav_team_rows(s, guild_id)
+        return odds_model.pick_fans(rows, team1, team2)
+
     try:
-        await broadcaster(match_alert_embed(team1, team2, tournament, scheduled_at))
+        await broadcaster(match_alert_embed(team1, team2, tournament, scheduled_at), fans_for)
     except Exception as exc:
         log.warning("[자동] 경기 알림 전송 실패: %s: %s", type(exc).__name__, exc)
 
@@ -140,8 +148,12 @@ async def job_live() -> None:
 async def job_stocks() -> None:
     """가상 주식 가격 변동 (매시 정각)."""
     try:
-        await stock_service.tick()
-        log.info("[자동] 주가 변동")
+        surges = await stock_service.tick()
+        log.info("[자동] 주가 변동 (급등락 %d종목)", len(surges))
+        if surges and broadcaster is not None:
+            from bot.embeds.stock import surge_embed
+
+            await broadcaster(surge_embed(surges))
     except Exception as exc:
         log.warning("[자동] 주가 변동 실패: %s: %s", type(exc).__name__, exc)
 

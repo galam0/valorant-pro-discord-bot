@@ -35,6 +35,7 @@ class Skin:
     theme: str | None
     chromas: int
     levels: int
+    variants: list[tuple[str, str | None]] = field(default_factory=list)   # (색상 이름, 이미지) — 첫 번째가 기본
 
 
 @dataclass
@@ -65,6 +66,14 @@ def _color(hexstr: str | None) -> int | None:
         return None
 
 
+def _chroma_label(chroma_name: str, skin_name: str) -> str:
+    """색상 변형 이름에서 스킨 이름 부분을 빼고 색 이름만 남긴다 ('리버 밴달 (보라색)' → '보라색')."""
+    m = re.search(r"\(([^)]+)\)\s*$", chroma_name)
+    if m:
+        return m.group(1)
+    return chroma_name.replace(skin_name, "").strip() or chroma_name
+
+
 def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bundles: list[dict]) -> Catalog:
     tier_by = {t.get("uuid"): t for t in tiers}
     theme_name = {t.get("uuid"): t.get("displayName") for t in themes}
@@ -78,9 +87,14 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
             icon = s.get("displayIcon") or (levels[0].get("displayIcon") if levels else None) \
                 or next((c.get("fullRender") for c in (s.get("chromas") or []) if c.get("fullRender")), None)
             tier = tier_by.get(s.get("contentTierUuid")) or {}
+            variants = [("기본", icon)]
+            for c in s.get("chromas") or []:
+                img = c.get("fullRender") or c.get("displayIcon")
+                if img and img != icon:
+                    variants.append((_chroma_label(c.get("displayName") or "", name), img))
             skins.append(Skin(s["uuid"], name, w.get("displayName") or "", tier.get("displayName"),
                               _color(tier.get("highlightColor")), icon, theme_name.get(s.get("themeUuid")),
-                              len(s.get("chromas") or []), len(levels)))
+                              len(s.get("chromas") or []), len(levels), variants))
 
     by_theme: dict[str, list[Skin]] = {}
     for sk in skins:
