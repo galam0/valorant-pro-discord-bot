@@ -151,3 +151,36 @@ def render_set_card(bundle, images: dict[str, Image.Image | None]) -> bytes:
         d.text((x0, 124 + rows * 44 + 4), f"…외 {len(bundle.skins) - MAX_ROWS}개", font=font("regular", 16), fill=MUTED)
     d.text((W - 40, h - 20), "가격은 등급 기준 일반 가격이에요", font=font("regular", 13), fill=MUTED, anchor="rm")
     return _png(img)
+
+
+GRID_COLS, GRID_ROWS = 5, 4
+GRID_PER_PAGE = GRID_COLS * GRID_ROWS
+_CELL_W, _CELL_H, _GAP, _MARGIN = 190, 214, 14, 30
+
+
+def render_set_grid(bundles: list, images: dict[str, Image.Image | None], page: int, pages: int, total: int, start_no: int = 1) -> bytes:
+    """세트 목록 한 쪽 (5×4 = 20개): 그림 + 번호 뱃지 + 이름. images: 세트 uuid → 그림."""
+    w = _MARGIN * 2 + GRID_COLS * _CELL_W + (GRID_COLS - 1) * _GAP
+    rows = max(1, -(-len(bundles) // GRID_COLS))
+    h = 84 + rows * _CELL_H + (rows - 1) * _GAP + 56
+    img = _background(w, h, (255, 70, 85))
+    d = ImageDraw.Draw(img)
+    d.text((_MARGIN, 44), "세트 목록", font=font("heavy", 32), fill=TEXT, anchor="lm")
+    d.text((w - _MARGIN, 44), f"{page + 1} / {pages}쪽 · 전체 {total}개", font=font("bold", 18), fill=MUTED, anchor="rm")
+    for i, b in enumerate(bundles):
+        r, c = divmod(i, GRID_COLS)
+        x = _MARGIN + c * (_CELL_W + _GAP)
+        y = 84 + r * (_CELL_H + _GAP)
+        accent = _tier_rgb(b.skins[0].color if b.skins else None)
+        d.rounded_rectangle([x, y, x + _CELL_W, y + _CELL_H], radius=14, fill=PANEL, outline=LINE)
+        d.rounded_rectangle([x, y, x + _CELL_W, y + 4], radius=2, fill=accent)
+        pic = images.get(b.uuid)
+        if pic is not None:
+            _paste_fit(img, pic, (x + 8, y + 12, x + _CELL_W - 8, y + 148))
+        name, f = fit_text(d, b.label or b.name, "bold", 16, _CELL_W - 20, min_size=12)
+        d.text((x + _CELL_W // 2, y + 172), name, font=f, fill=TEXT, anchor="mm")
+        d.text((x + _CELL_W // 2, y + 196), f"스킨 {len(b.skins)}개", font=font("regular", 13), fill=MUTED, anchor="mm")
+        d.ellipse([x + 8, y + 12, x + 38, y + 42], fill=(0, 0, 0), outline=accent, width=2)
+        d.text((x + 23, y + 27), str(start_no + i), font=font("bold", 15), fill=TEXT, anchor="mm")
+    d.text((w // 2, h - 26), "아래 메뉴에서 번호의 세트를 고르면 자세히 보여줘요", font=font("regular", 15), fill=MUTED, anchor="mm")
+    return _png(img)
