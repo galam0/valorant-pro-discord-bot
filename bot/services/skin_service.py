@@ -59,6 +59,7 @@ class Bundle:
     description: str | None
     icon: str | None
     skins: list[Skin] = field(default_factory=list)
+    label: str = ""                 # 이름이 같은 세트끼리 구분되는 이름 (예: 'RGX 11z 프로 (2.0)')
 
 
 @dataclass
@@ -77,6 +78,12 @@ def _color(hexstr: str | None) -> int | None:
         return int((hexstr or "")[:6], 16)
     except ValueError:
         return None
+
+
+def _version(text: str) -> str | None:
+    """글 안에서 '2.0', '3.0' 같은 버전 표기를 찾는다."""
+    m = re.search(r"(?<![\d.])(\d)\.0(?![\d.])", text)
+    return f"{m.group(1)}.0" if m else None
 
 
 def _chroma_label(chroma_name: str, skin_name: str) -> str:
@@ -149,14 +156,37 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
             by_theme.setdefault(key(_BUNDLE_SUFFIX.sub("", sk.theme)), []).append(sk)
 
     out: list[Bundle] = []
+    versions: dict[str, str | None] = {}
     for b in bundles:
         name = b.get("displayName") or ""
         if not name:
             continue
         bk = key(_BUNDLE_SUFFIX.sub("", name))
-        members = by_theme.get(bk, []) if bk else []
-        out.append(Bundle(b["uuid"], name, b.get("displayNameSubText"), b.get("extraDescription") or b.get("description"),
-                          b.get("displayIcon") or b.get("displayIcon2") or b.get("verticalPromoImage"), members))
+        # 이름이 같아도 2.0·3.0 판은 이름·부제·설명·에셋 경로 어딘가에 버전이 적혀 있으면 그걸로 컬렉션을 찾는다
+        ver = _version(" ".join(str(b.get(k) or "") for k in
+                                ("displayName", "displayNameSubText", "extraDescription", "description", "assetPath")))
+        members = (by_theme.get(bk + ver.replace(".", ""), []) if ver else []) or (by_theme.get(bk, []) if bk else [])
+        bundle = Bundle(b["uuid"], name, b.get("displayNameSubText"), b.get("extraDescription") or b.get("description"),
+                        b.get("displayIcon") or b.get("displayIcon2") or b.get("verticalPromoImage"), members, name)
+        versions[bundle.uuid] = ver
+        out.append(bundle)
+
+    groups: dict[str, list[Bundle]] = {}
+    for b in out:
+        groups.setdefault(key(b.name), []).append(b)
+    for g in groups.values():
+        if len(g) < 2:
+            continue
+        vers = [versions[b.uuid] for b in g]
+        subs = [b.subtext for b in g]
+        if all(vers) and len(set(vers)) == len(g):
+            tags = vers
+        elif all(subs) and len(set(subs)) == len(g):
+            tags = subs
+        else:
+            tags = [str(i) for i in range(1, len(g) + 1)]
+        for b, tag in zip(g, tags):
+            b.label = f"{b.name} ({tag})"
     return Catalog(skins, out)
 
 
@@ -189,8 +219,8 @@ def search_bundles(cat: Catalog, query: str, limit: int = 25) -> list[Bundle]:
     q = key(query)
     if not q:
         return cat.bundles[:limit]
-    starts = [b for b in cat.bundles if key(b.name).startswith(q)]
-    contains = [b for b in cat.bundles if q in key(b.name) and b not in starts]
+    starts = [b for b in cat.bundles if key(b.label or b.name).startswith(q)]
+    contains = [b for b in cat.bundles if q in key(b.label or b.name) and b not in starts]
     return (starts + contains)[:limit]
 
 

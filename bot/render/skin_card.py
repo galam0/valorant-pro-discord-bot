@@ -123,7 +123,7 @@ def render_set_card(bundle, images: dict[str, Image.Image | None]) -> bytes:
     img = _background(W, h, accent)
     d = ImageDraw.Draw(img)
 
-    title, f_title = fit_text(d, bundle.name, "heavy", 42, W - 80)
+    title, f_title = fit_text(d, bundle.label or bundle.name, "heavy", 42, W - 80)
     d.text((40, 52), title, font=f_title, fill=TEXT, anchor="lm")
     sub = bundle.subtext or (f"스킨 {len(bundle.skins)}개" if bundle.skins else "")
     if sub:

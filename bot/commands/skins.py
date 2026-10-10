@@ -32,7 +32,7 @@ async def bundle_autocomplete(interaction: discord.Interaction, current: str) ->
     cat = ss.cached()
     if cat is None:
         return []
-    return [app_commands.Choice(name=b.name[:100], value=b.uuid) for b in ss.search_bundles(cat, current)]
+    return [app_commands.Choice(name=(b.label or b.name)[:100], value=b.uuid) for b in ss.search_bundles(cat, current)]
 
 
 def skin_embed(s: ss.Skin, idx: int = 0) -> discord.Embed:
@@ -56,7 +56,7 @@ def skin_embed(s: ss.Skin, idx: int = 0) -> discord.Embed:
 
 
 def bundle_embed(b: ss.Bundle) -> discord.Embed:
-    e = discord.Embed(title=f"🎁 {b.name}", color=COLOR_MAIN)
+    e = discord.Embed(title=f"🎁 {b.label or b.name}", color=COLOR_MAIN)
     parts = [p for p in (b.subtext, b.description) if p]
     if parts:
         e.description = "\n".join(parts)[:600]
@@ -103,9 +103,9 @@ class SkinBrowser(discord.ui.View):
                 self._button("🎬 스킨 영상", self._play)
             if self.bundle:
                 self._button("📦 세트로", self._back)
-                self.add_item(discord.ui.Button(label="🎬 트레일러", url=ss.trailer_url(self.bundle.name)))
+                self.add_item(discord.ui.Button(label="🎬 트레일러", url=ss.trailer_url(self.bundle.label or self.bundle.name)))
         elif self.mode == "set":
-            self.add_item(discord.ui.Button(label="🎬 트레일러 (한국어 검색)", url=ss.trailer_url(self.bundle.name)))
+            self.add_item(discord.ui.Button(label="🎬 트레일러 (한국어 검색)", url=ss.trailer_url(self.bundle.label or self.bundle.name)))
             self._button("📋 세트 목록", self._to_list)
         options = self._options()
         if options:
@@ -121,7 +121,7 @@ class SkinBrowser(discord.ui.View):
 
     def _options(self) -> list[discord.SelectOption]:
         if self.mode == "list":
-            return [discord.SelectOption(label=b.name[:100], value=b.uuid, description=f"스킨 {len(b.skins)}개"[:100] if b.skins else None)
+            return [discord.SelectOption(label=(b.label or b.name)[:100], value=b.uuid, description=f"스킨 {len(b.skins)}개"[:100] if b.skins else None)
                     for b in self.cat.bundles[:25]]
         if self.bundle is None:
             return []
@@ -159,7 +159,7 @@ class SkinBrowser(discord.ui.View):
             return skin_embed(self.skin, self.idx)
         if self.mode == "set":
             return bundle_embed(self.bundle)
-        names = "\n".join(f"· {b.name}" for b in self.cat.bundles[:25])
+        names = "\n".join(f"· {b.label or b.name}" for b in self.cat.bundles[:25])
         e = discord.Embed(title="🎁 세트 목록", description=names or "없음", color=COLOR_MAIN)
         e.set_footer(text=f"전체 {len(self.cat.bundles)}개 · 아래에서 고르거나 /세트 이름 으로 검색해요")
         return e

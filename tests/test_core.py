@@ -922,6 +922,25 @@ class SkinDisambiguateTest(unittest.TestCase):
         self.assertEqual((a.label, c.label), ("프라임 밴달 (1)", "프라임 밴달 (2)"))
 
 
+class DuplicateBundleTest(unittest.TestCase):
+    def _parse(self, bundles):
+        from bot.services import skin_service as ss
+
+        mk = lambda u, n, th: {"uuid": u, "displayName": n, "themeUuid": th, "contentTierUuid": None, "displayIcon": "i", "levels": [], "chromas": []}
+        weapons = [{"displayName": "밴달", "skins": [mk("a", "RGX 밴달", "t1"), mk("b", "RGX 2.0 밴달", "t2")]}]
+        themes = [{"uuid": "t1", "displayName": "RGX 컬렉션"}, {"uuid": "t2", "displayName": "RGX 2.0 컬렉션"}]
+        return ss.parse_catalog(weapons, [], themes, bundles)
+
+    def test_version_in_text(self):
+        cat = self._parse([{"uuid": "b1", "displayName": "RGX"}, {"uuid": "b2", "displayName": "RGX", "extraDescription": "RGX 2.0 판"}])
+        self.assertEqual([[s.uuid for s in b.skins] for b in cat.bundles], [["a"], ["b"]])
+        self.assertEqual(len({b.label for b in cat.bundles}), 2)
+
+    def test_numbering_fallback(self):
+        cat = self._parse([{"uuid": "b1", "displayName": "RGX"}, {"uuid": "b2", "displayName": "RGX"}, {"uuid": "b3", "displayName": "RGX"}])
+        self.assertEqual([b.label for b in cat.bundles], ["RGX (1)", "RGX (2)", "RGX (3)"])
+
+
 class TierEmojiNameTest(unittest.TestCase):
     def test_name(self):
         from bot.services.tier_emoji import emoji_name
