@@ -33,27 +33,18 @@ APPROX_TIERS = {EXCLUSIVE}
 # 근접 무기는 등급이 같아도 값이 제각각이라 스킨별 실제 상점 가격을 쓴다 (영어 이름 기준).
 # 여기에 없는 (새로 나온) 근접 무기는 등급으로 어림한다 → '약'.
 MELEE_TIER_PRICE = {SELECT: 1750, DELUXE: 2550, PREMIUM: 3550, ULTRA: 4950, EXCLUSIVE: 4350}
-MELEE_PRICE_EN = {
-    1750: "Switchback Ascender, Luxe Knife, Prism Knife, Smite Knife, Reverie Sword",
-    2550: "Kaimana, Emberclad Hammer, Chromedek Gauntlet, No Limits Bat, Altitude Knuckle Knife, Winterwunderland Candy Cane, "
-          "Catrina, Radiant Crisis 001 Baseball Bat, Snowfall Wand, Titanmail Mace, Blade of Serket, Equilibrium, Caeruleus",
-    3550: "Blade of Aemondir, Eternal Sovereign, Black.Market Butterfly Knife, Prime Axe, Sovereign Sword, Oni Claw, "
-          "Glitchpop Dagger, Nebula Knife, Spine Dagger, Ego Knife, Gravitational Uranium Neuroblaster, Reaver Knife, "
-          "Ion Energy Sword, VALORANT GO! Vol. 1 Knife, Prime 2.0 Karambit, Forsaken Ritual Blade, Prosperity, "
-          "Origin Crescent Blade, Recon Balisong, Yoru's Stylish Butterfly Knife, Magepunk Shock Gauntlet, Hu Else, "
-          "Celestial Fan, Hack, Gaia's Wrath, Neptune Anchor, Xenohunter Knife, Crimsonbeast Hammer, Soulstrife Scythe, "
-          "Cryostasis Impact Drill, Luna's Descent",
-    3650: "Magepunk Electroblade",
-    4350: "Mystbloom Kunai, Blades of Primordia, XERØFANG Knife, Overdrive Blade, Relic Stone Daggers, Ruyi Staff, "
-          "Gaia's Vengeance 2.0, Blades of Imperium, Neo Frontier Axe, Magepunk Sparkswitch, BlastX Polymer KnifeTech Coated Knife, "
-          "Glitchpop Axe, Broken Blade of the Ruined King, Relic of the Sentinel, RGX 11z Pro Blade, "
-          "Personal Administrative Melee Unit, RGX 11z Pro Firefly, Blade of Chaos, Reaver Karambit, Terminus a Quo, "
-          "Ion Karambit, Araxys Bio Harvester, VCT LOCK//IN Misericórdia",
-    4550: "Singularity Knife",
+MELEE_PRICE_EN = {   # 출처: THESPIKE.GG 근접 무기 가격 목록 (2026), GINX 목록으로 보충
+    1750: "Daydreams Crowbar; Fortune's Scepter; Intergrade Blade; Switchback Ascender; Smite Knife; Luxe Knife; Reverie Sword; Storm Maw Axe",
+    2550: "Aperture Stiletto; Chromedek Gauntlet; Combat Crafts Axe; Emberclad Hammer; Kaimana; MK.VII Liberty Combat Knife; Orion Sword; Wonderstallion Hammer; No Limits Bat; Prism Knife; Hu Else; Snowfall Wand; Titanmail Mace; Blade of Serket; Caeruleus; Winterwunderland Candy Cane; Equilibrium; Catrina; Altitude Knuckle Knife; Wasteland Crowbar; Jellybeam Sugarslice",
+    3550: "Spine Dagger; Ego Knife; Gravitational Uranium Neuroblaster; Yoru's Stylish Butterfly Knife; Gaia's Fury; Gravitational Uranium Neuroblaster Baton; Prime Axe; Sovereign Sword; Oni Claw; Nebula Knife; Spline Dagger; Reaver Knife; Ion Energy Sword; VALORANT GO! Vol. 1 Knife; Yoru's Stylish Butterfly Comb; Prime 2.0 Karambit; Celestial Fan; Forsaken Ritual Blade; Origin Crescent Blade; Neptune Anchor; Xenohunter Knife; Crimsonbeast Hammer; Soulstrife Scythe; Cryostasis Impact Drill; Luna's Descent; Radiant Crisis 001 Baseball Bat; Recon Balisong; Gaia's Wrath; Magepunk Electroblade; Magepunk Shock Gauntlet; Prosperity; Hack; Black.Market Butterfly Knife; Solarstride Flamethrower; Minima Karambit; Neptune Hook",
+    3915: "5 Years // Beta Remastered Knife",
+    4350: "Singularity Knife; Arcane Gauntlets; Blade of Aemondir; Blades of Primordia; Doombringer Battleaxe; Eternal Sovereign; Mystbloom Kunai; Overdrive Blade; Relic Stone Daggers; Ruyi Staff; Singularity Butterfly Knife; XERØFANG Knife; Blades of Imperium; Araxys Bio Harvester; Terminus a Quo; RGX 11z Pro Blade; RGX 11z Pro Firefly; Reaver Karambit; Ion Karambit; Broken Blade of the Ruined King; Relic of the Sentinel; Blade of Chaos; Neo Frontier Axe; Magepunk Sparkswitch; Mystbloom Fanblade; ORA by OneTap Knife; Dolmir's Judgement; Flail of Chaos; Bubblegum Deathwish Chainsaw; Divergence Staff; Bolt Knife; Helix Daggers; RGX 11z Pro Karambit; Blackthorn Blades",
+    4550: "Glitchpop Dagger; Glitchpop Axe; BlastX Polymer KnifeTech Coated Knife",
     4710: "Ignite Fan",
-    4950: "Elderflame Dagger",
-    5350: "Kuronami no Yaiba, Champions 2023 Kunai, Waveform, Champions 2021 Karambit, Champions 2022 Butterfly Knife, "
-          "Onimaru Kunitsuna",
+    4950: "Evori's Spellcaster; Elderflame Dagger; Personal Administrative Melee Unit",
+    5350: "VCT 2026 SIGIL; Araxys Bio-Atomizers; Champions 2024 Blade; EX.O Edge; Kuronami no Yaiba; Nocturnum Scythe; Waveform; Champions 2023 Kunai; Champions 2022 Butterfly Knife; Champions 2021 Karambit; Onimaru Kunitsuna; Reaver Butterfly Knife; Champions 2025 Butterfly Knife; Phaseguard Splitter; Cyrax Fanblade",
+    5440: "VCT LOCK//IN Misericórdia",
+    5850: "VCT Karambit; 2025 VCT Karambit",
     5950: "Power Fist",
 }
 MELEE_WEAPON = "2f59173c-4bed-b6c3-2191-dea9b58be9c7"
@@ -63,7 +54,7 @@ def _norm_en(name: str) -> str:
     return re.sub(r"[^0-9a-zø]", "", (name or "").lower())
 
 
-MELEE_PRICE = {_norm_en(n): price for price, names in MELEE_PRICE_EN.items() for n in names.split(", ")}
+MELEE_PRICE = {_norm_en(n): price for price, names in MELEE_PRICE_EN.items() for n in names.split("; ")}
 # 세트 목록에서 뺄 것: 역습 세트, VCT 클래식·팀 캡슐, 자선 세트
 EXCLUDED_BUNDLE = re.compile(r"역습|캡슐|자선|vct.*(클래식|classic)|(클래식|classic).*vct|charity|capsule|counter\s*/?\s*attack", re.I)
 Variant = tuple  # (색상 이름, 이미지 URL, 영상 URL)
@@ -85,6 +76,7 @@ class Skin:
     price: int | None = None        # 상점 가격 (VP). 등급 없음(배틀패스 등)은 None
     melee: bool = False
     label: str = ""          # 목록·선택 메뉴에 보일 이름 (이름이 같은 스킨끼리는 구분 글자가 붙음)
+    reward: bool = False     # 배틀패스·이벤트 패스 보상 (상점 판매 아님)
     approx: bool = False     # 가격이 어림값인지 (익스클루시브 총기, 가격표에 없는 근접 무기)
 
 
@@ -170,8 +162,9 @@ def _disambiguate(skins: list[Skin]) -> None:
 
 
 def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bundles: list[dict],
-                  melee_en: dict[str, str] | None = None) -> Catalog:
-    """melee_en: 근접 무기 스킨 uuid → 영어 이름 (근접 무기 가격표를 찾는 데 씀)."""
+                  melee_en: dict[str, str] | None = None, reward_levels: set[str] | None = None) -> Catalog:
+    """melee_en: 근접 무기 스킨 uuid → 영어 이름 (근접 무기 가격표를 찾는 데 씀).
+    reward_levels: 배틀패스·이벤트 패스 보상으로 주는 스킨 레벨 uuid (상점에서 팔지 않으니 가격 없음)."""
     tier_by = {t.get("uuid"): t for t in tiers}
     theme_name = {t.get("uuid"): t.get("displayName") for t in themes}
     skins: list[Skin] = []
@@ -202,9 +195,13 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
                     extras.append((_chroma_label(cname, name), img, c.get("streamedVideo") or skin_video))
             variants = [("기본", base_img, base_video)] + extras
             price, approx = skin_price(s.get("contentTierUuid"), melee, (melee_en or {}).get(s["uuid"]))
+            if reward_levels and any(lv.get("uuid") in reward_levels for lv in levels):
+                price, approx, reward = None, False, True      # 패스 보상 스킨
+            else:
+                reward = False
             skins.append(Skin(s["uuid"], name, w.get("displayName") or "", tier.get("displayName"),
                               _color(tier.get("highlightColor")), base_img, theme_name.get(s.get("themeUuid")),
-                              len(extras), len(levels), variants, tier.get("displayIcon"), price, melee, approx=approx))
+                              len(extras), len(levels), variants, tier.get("displayIcon"), price, melee, approx=approx, reward=reward))
 
     _disambiguate(skins)
     by_theme: dict[str, list[Skin]] = {}
@@ -326,6 +323,20 @@ async def _get_json(session, path: str, lang: str = LANG):
         return (await resp.json()).get("data") or []
 
 
+async def _reward_levels(session) -> set[str]:
+    """배틀패스·이벤트 패스에서 주는 스킨 레벨 uuid. 실패하면 빈 집합."""
+    try:
+        out: set[str] = set()
+        for c in await _get_json(session, "contracts", "en-US"):
+            for ch in (c.get("content") or {}).get("chapters") or []:
+                rewards = [lv.get("reward") or {} for lv in ch.get("levels") or []] + list(ch.get("freeRewards") or [])
+                out.update(r.get("uuid") for r in rewards if r.get("type") == "EquippableSkinLevel" and r.get("uuid"))
+        return out
+    except Exception as exc:
+        log.warning("패스 보상 목록 못 받음: %s: %s", type(exc).__name__, exc)
+        return set()
+
+
 async def _melee_en(session) -> dict[str, str]:
     """근접 무기 스킨의 영어 이름 (가격표 찾기용). 실패해도 등급 어림값으로 동작."""
     try:
@@ -345,10 +356,11 @@ async def load(force: bool = False) -> Catalog:
 
         timeout = aiohttp.ClientTimeout(total=30)
         async with aiohttp.ClientSession(timeout=timeout, headers={"User-Agent": "ValoProBot/0.3"}) as session:
-            weapons, tiers, themes, bundles, melee_en = await asyncio.gather(
+            weapons, tiers, themes, bundles, melee_en, rewards = await asyncio.gather(
                 _get_json(session, "weapons"), _get_json(session, "contenttiers"),
-                _get_json(session, "themes"), _get_json(session, "bundles"), _melee_en(session))
-        cat = parse_catalog(weapons, tiers, themes, bundles, melee_en)
+                _get_json(session, "themes"), _get_json(session, "bundles"), _melee_en(session), _reward_levels(session))
+        cat = parse_catalog(weapons, tiers, themes, bundles, melee_en, rewards)
+        log.info("패스 보상 스킨 레벨 %d개 (가격 없음 처리)", len(rewards))
         log.info("근접 무기 영어 이름(어림값): %s", " | ".join(
             f"{melee_en.get(s.uuid, '?')}={short_tier(s.tier)}" for s in cat.skins if s.melee and s.approx))
         cat.loaded_at = time.monotonic()

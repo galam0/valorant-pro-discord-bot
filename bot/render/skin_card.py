@@ -94,7 +94,7 @@ def render_skin_card(skin, idx: int, weapon_img: Image.Image | None, tier_img: I
     y = 396
     x = 40
     price = price_text(skin)
-    x = _chip(d, x, y, "가격", price or "정보 없음", accent)
+    x = _chip(d, x, y, "가격", price or ("패스 보상" if getattr(skin, "reward", False) else "정보 없음"), accent)
     x = _chip(d, x, y, "레벨", f"{skin.levels}단계" if skin.levels else "-", accent)
     x = _chip(d, x, y, "색상 변형", f"{skin.chromas}개", accent)
 
