@@ -896,8 +896,7 @@ class SkinCatalogTest(unittest.TestCase):
         self.assertIsNone(cat.skins[1].price)                           # 근접 무기는 가격 추정 안 함
         self.assertIn("youtube.com/results", ss.trailer_url("리버"))
         self.assertEqual([x.uuid for x in cat.bundles[0].skins], ["s1", "s3"])   # '리버 컬렉션' 테마 = '리버' 번들
-        self.assertEqual(cat.bundles[1].skins, [])
-        self.assertEqual(cat.bundles[1].icon, "x")
+        self.assertEqual([b.uuid for b in cat.bundles], ["b1"])         # 스킨 없는 세트('없는 번들')는 목록에서 제외
 
     def test_search(self):
         ss, cat = self._cat()
@@ -934,12 +933,18 @@ class DuplicateBundleTest(unittest.TestCase):
     def test_same_name_keeps_one(self):
         cat = self._parse([{"uuid": "b1", "displayName": "RGX"}, {"uuid": "b2", "displayName": "RGX", "extraDescription": "RGX 2.0 판"},
                            {"uuid": "b3", "displayName": "RGX"}, {"uuid": "b4", "displayName": "프라임"}])
-        self.assertEqual([b.uuid for b in cat.bundles], ["b1", "b4"])      # 스킨 수가 같으면 버전 표기 없는 원본, 먼저 나온 것
+        self.assertEqual([b.uuid for b in cat.bundles], ["b1"])      # 스킨 수가 같으면 버전 표기 없는 원본, 먼저 나온 것 (b4는 스킨 없음)
         self.assertEqual([s.uuid for s in cat.bundles[0].skins], ["a"])
 
     def test_prefers_more_skins(self):
-        cat = self._parse([{"uuid": "b1", "displayName": "없는 컬렉션"}, {"uuid": "b2", "displayName": "없는 컬렉션"}])
-        self.assertEqual([b.uuid for b in cat.bundles], ["b1"])
+        cat = self._parse([{"uuid": "b1", "displayName": "없는 컬렉션"}, {"uuid": "b2", "displayName": "RGX 2.0"}, {"uuid": "b3", "displayName": "RGX"}])
+        self.assertNotIn("b1", [b.uuid for b in cat.bundles])      # 스킨 없음 → 제외
+
+    def test_excluded_names(self):
+        cat = self._parse([{"uuid": "x1", "displayName": "RGX 역습"}, {"uuid": "x2", "displayName": "VCT 클래식 RGX"},
+                           {"uuid": "x3", "displayName": "RGX 팀 캡슐"}, {"uuid": "x4", "displayName": "RGX", "displayNameSubText": "자선 판매"},
+                           {"uuid": "ok", "displayName": "RGX"}])
+        self.assertEqual([b.uuid for b in cat.bundles], ["ok"])
 
 
 class TierEmojiNameTest(unittest.TestCase):

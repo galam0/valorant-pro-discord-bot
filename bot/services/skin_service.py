@@ -30,6 +30,8 @@ TIER_PRICE = {
     "411e4a55-4e59-7757-41f0-86a53f101bb5": 2175,   # 얼티밋
     "e046854e-406c-37f4-6607-19a9ba8426fc": 2475,   # 익스클루시브
 }
+# 세트 목록에서 뺄 것: 역습 세트, VCT 클래식·팀 캡슐, 자선 세트
+EXCLUDED_BUNDLE = re.compile(r"역습|캡슐|자선|vct|charity|capsule|counter\s*/?\s*attack", re.I)
 Variant = tuple  # (색상 이름, 이미지 URL, 영상 URL)
 
 
@@ -161,7 +163,7 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
     versions: dict[str, str | None] = {}
     for b in bundles:
         name = b.get("displayName") or ""
-        if not name:
+        if not name or EXCLUDED_BUNDLE.search(f"{name} {b.get('displayNameSubText') or ''}"):
             continue
         bk = key(_BUNDLE_SUFFIX.sub("", name))
         # 이름이 같아도 2.0·3.0 판은 이름·부제·설명·에셋 경로 어딘가에 버전이 적혀 있으면 그걸로 컬렉션을 찾는다
@@ -172,7 +174,8 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
                         b.get("displayIcon") or b.get("displayIcon2") or b.get("verticalPromoImage"), members, name,
                         b.get("assetPath"), ver)
         versions[bundle.uuid] = ver
-        out.append(bundle)
+        if members:                 # 스킨이 없는 세트(분무기·카드만 있는 묶음 등)는 뺀다
+            out.append(bundle)
 
     # 이름이 같은 세트(2.0·3.0 판 등)는 하나만 남긴다: 스킨이 가장 많은 것 → 버전 표기가 없는 원본 → 먼저 나온 것
     best: dict[str, Bundle] = {}
