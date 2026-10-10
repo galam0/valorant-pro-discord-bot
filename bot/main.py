@@ -174,6 +174,14 @@ class ValorantBot(commands.Bot):
         skin_service.cached()   # 스킨 목록을 미리 불러오기 시작 (자동완성이 바로 뜨도록)
         from bot.services import tier_emoji
         asyncio.create_task(tier_emoji.ensure(self))   # 등급 아이콘 이모지 준비 (뒤에서)
+
+        async def warm() -> None:
+            try:
+                await skin_service.warm_icons(await skin_service.load())
+            except Exception as exc:
+                logger.warning("세트 그림 미리 받기 실패: %s", exc)
+
+        asyncio.create_task(warm())
         ok = 0
         for guild in self.guilds:
             try:

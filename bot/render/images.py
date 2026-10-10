@@ -54,7 +54,7 @@ def _decode(raw: bytes) -> Image.Image | None:
         return None
 
 
-async def _download(url: str) -> tuple[str, bytes | None]:
+async def _download(url: str, max_bytes: int = MAX_BYTES) -> tuple[str, bytes | None]:
     """('ok', 바이트) / ('missing', None: 404 등 영구 실패) / ('retry', None: 일시 오류)"""
     try:
         session = await _get_session()
@@ -64,7 +64,8 @@ async def _download(url: str) -> tuple[str, bytes | None]:
                 raw = bytearray()
                 async for chunk in resp.content.iter_chunked(65536):
                     raw += chunk
-                    if len(raw) > MAX_BYTES:
+                    if len(raw) > max_bytes:
+                        log.warning("이미지가 너무 커서 건너뜀 (%dMB 초과): %s", max_bytes // 1048576, url)
                         return "missing", None
                 return "ok", bytes(raw)
             if resp.status in (404, 410):
@@ -76,7 +77,7 @@ async def _download(url: str) -> tuple[str, bytes | None]:
         return "retry", None
 
 
-async def fetch_image(url: str | None) -> Image.Image | None:
+async def fetch_image(url: str | None, max_bytes: int = MAX_BYTES) -> Image.Image | None:
     if not url or not url.startswith(("https://", "http://")):
         return None
     if url in _CACHE:
@@ -84,10 +85,10 @@ async def fetch_image(url: str | None) -> Image.Image | None:
         return _CACHE[url]
 
     async with _SEM:
-        state, raw = await _download(url)
+        state, raw = await _download(url, max_bytes)
         if state == "retry":  # 일시 오류는 한 번 더 시도
             await asyncio.sleep(0.5)
-            state, raw = await _download(url)
+            state, raw = await _download(url, max_bytes)
 
     if state == "retry":
         return None  # 캐시하지 않음 → 다음 요청 때 다시 시도
@@ -138,10 +139,10 @@ async def fetch_big(url: str | None, size: int = 640) -> Image.Image | None:
     return img
 
 
-async def fetch_many(urls: dict[str, str | None]) -> dict[str, Image.Image | None]:
+async def fetch_many(urls: dict[str, str | None], max_bytes: int = MAX_BYTES) -> dict[str, Image.Image | None]:
     keys = list(urls)
     t0 = time.perf_counter()
     cached = sum(1 for k in keys if urls[k] in _CACHE)
-    results = await asyncio.gather(*(fetch_image(urls[k]) for k in keys))
+    results = await asyncio.gather(*(fetch_image(urls[k], max_bytes) for k in keys))
     log.info("[성능] 이미지 %d장 (캐시 %d) %dms", len([k for k in keys if urls[k]]), cached, (time.perf_counter() - t0) * 1000)
     return dict(zip(keys, results))

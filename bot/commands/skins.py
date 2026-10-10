@@ -18,6 +18,7 @@ from bot.render.skin_card import GRID_PER_PAGE, render_set_card, render_set_grid
 from bot.services import skin_service as ss, tier_emoji
 
 log = logging.getLogger("valobot.cmd.skins")
+_GRID_CACHE: dict[tuple, bytes] = {}   # (목록 판, 쪽) → 만든 격자 이미지
 PAGE = GRID_PER_PAGE   # 한 쪽 20개 (선택 메뉴 한도 25 안)
 
 
@@ -156,10 +157,19 @@ class SkinBrowser(discord.ui.View):
                 png = await asyncio.to_thread(render_skin_card, s, self.idx, weapon, tier)
                 return discord.File(BytesIO(png), filename="skin.png"), None
             if self.mode == "list":
-                page = self._page_bundles()
-                fetched = await images.fetch_many({b.uuid: b.icon for b in page})
-                png = await asyncio.to_thread(render_set_grid, page, fetched, self.page, self._pages(), len(self.cat.bundles),
-                                              self.page * PAGE + 1)
+                ck = (id(self.cat), self.page)
+                png = _GRID_CACHE.get(ck)
+                if png is None:
+                    page = self._page_bundles()
+                    fetched = await images.fetch_many({b.uuid: ss.icon_url(b) for b in page}, ss.BIG_IMAGE)
+                    missing = [b.name for b in page if fetched.get(b.uuid) is None]
+                    if missing:
+                        log.warning("세트 그림 %d/%d개 없음: %s", len(missing), len(page), ", ".join(missing))
+                    png = await asyncio.to_thread(render_set_grid, page, fetched, self.page, self._pages(),
+                                                  len(self.cat.bundles), self.page * PAGE + 1)
+                    if not missing:      # 그림이 다 있을 때만 저장 (빠진 건 다음에 다시 시도)
+                        _GRID_CACHE.clear() if len(_GRID_CACHE) > 30 else None
+                        _GRID_CACHE[ck] = png
                 return discord.File(BytesIO(png), filename="sets.png"), None
             if self.mode == "set":
                 urls = {s.tier_icon for s in self.bundle.skins[:10] if s.tier_icon}
