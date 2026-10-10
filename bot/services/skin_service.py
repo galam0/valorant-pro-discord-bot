@@ -266,30 +266,12 @@ async def load(force: bool = False) -> Catalog:
         return cat
 
 
-BIG_IMAGE = 16 * 1024 * 1024   # 세트 그림은 크기가 커서 일반 이미지(3MB)보다 넉넉히 받는다
+BIG_IMAGE = 8 * 1024 * 1024    # 세트 그림은 크기가 커서 일반 이미지(3MB)보다 넉넉히 받는다 (메모리 때문에 8MB까지만)
 
 
 def icon_url(b: Bundle) -> str | None:
     """세트 그림 주소. 없으면 첫 스킨의 그림으로 대신한다."""
     return b.icon or next((s.icon for s in b.skins if s.icon), None)
-
-
-async def warm_icons(cat: Catalog) -> None:
-    """세트 그림을 미리 받아 둔다 (목록 격자가 바로 뜨도록). 서버에 부담이 없게 천천히."""
-    from bot.render import images
-
-    t0 = time.monotonic()
-    ok = 0
-    try:
-        for i in range(0, len(cat.bundles), 6):
-            batch = cat.bundles[i:i + 6]
-            got = await asyncio.gather(*(images.fetch_image(icon_url(b), BIG_IMAGE) for b in batch))
-            ok += sum(1 for g in got if g is not None)
-            await asyncio.sleep(0.3)
-    except Exception as exc:
-        log.warning("세트 그림 미리 받기 실패: %s: %s", type(exc).__name__, exc)
-        return
-    log.info("세트 그림 미리 받기: %d/%d개 (%.0f초)", ok, len(cat.bundles), time.monotonic() - t0)
 
 
 def cached() -> Catalog | None:

@@ -43,10 +43,22 @@ async def close() -> None:
         await _session.close()
 
 
+MAX_PIXELS = 12_000_000   # 이보다 큰 그림은 디코딩 때 메모리가 너무 커서 건너뜀 (서버 메모리 512MB)
+_DECODE = asyncio.Semaphore(1)   # 큰 그림 여러 장을 동시에 풀면 메모리가 순간적으로 폭증하므로 한 장씩
+
+
 def _decode(raw: bytes) -> Image.Image | None:
     try:
         img = Image.open(BytesIO(raw))
+        if img.width * img.height > MAX_PIXELS:
+            log.warning("그림 크기가 너무 커서 건너뜀: %dx%d", img.width, img.height)
+            return None
         img.load()
+        if img.mode not in ("RGB", "RGBA", "L", "LA"):
+            img = img.convert("RGBA")
+        factor = max(img.width, img.height) // 512      # 크게 줄일 그림은 먼저 정수 배로 줄여 메모리를 아낀다
+        if factor >= 2:
+            img = img.reduce(factor)
         img = img.convert("RGBA")
         img.thumbnail((256, 256), Image.LANCZOS)  # 카드에는 최대 150px로 들어가므로 미리 줄여 메모리 절약
         return img
@@ -92,7 +104,11 @@ async def fetch_image(url: str | None, max_bytes: int = MAX_BYTES) -> Image.Imag
 
     if state == "retry":
         return None  # 캐시하지 않음 → 다음 요청 때 다시 시도
-    img = await asyncio.to_thread(_decode, raw) if raw is not None else None
+    if raw is not None:
+        async with _DECODE:
+            img = await asyncio.to_thread(_decode, raw)
+    else:
+        img = None
     if raw is not None and img is None:
         log.warning("이미지를 읽지 못했습니다 (깨진 파일?): %s", url)
         return None  # 이것도 캐시하지 않음 (한 번 실패했다고 영원히 빈 칸이 되지 않게)
