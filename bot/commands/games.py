@@ -15,6 +15,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.autocomplete import team_autocomplete
+from bot.database import repository as repo
 from bot.services import guild_settings
 from bot.database.database import db
 from bot.embeds.common import COLOR_INFO, COLOR_MAIN, COLOR_OK, COLOR_WARN, error_embed
@@ -266,9 +268,11 @@ class QuizView(discord.ui.View):
 class Connect4Invite(discord.ui.View):
     """사목 도전장: 지목된 사람만 수락/거절할 수 있다."""
 
-    def __init__(self, challenger: discord.abc.User, opponent: discord.abc.User) -> None:
+    def __init__(self, challenger: discord.abc.User, opponent: discord.abc.User,
+                 logo=None, team: str | None = None) -> None:
         super().__init__(timeout=120)
         self.challenger, self.opponent = challenger, opponent
+        self.logo, self.team = logo, team
         self.message: discord.Message | None = None
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -284,7 +288,7 @@ class Connect4Invite(discord.ui.View):
         self.stop()
         players = [self.challenger, self.opponent]
         random.shuffle(players)                      # 누가 먼저 둘지는 무작위
-        game = Connect4View(players[0], players[1])
+        game = Connect4View(players[0], players[1], logo=self.logo, team=self.team)
         game.message = self.message
         embed, files = await game.render()
         await interaction.response.edit_message(content=None, embed=embed, attachments=files, view=game)
@@ -316,9 +320,10 @@ class Connect4View(discord.ui.View):
 
     TURN_LIMIT = 180       # 이 시간(초) 동안 안 두면 그 사람이 진다
 
-    def __init__(self, first: discord.abc.User, second: discord.abc.User) -> None:
+    def __init__(self, first: discord.abc.User, second: discord.abc.User, logo=None, team: str | None = None) -> None:
         super().__init__(timeout=self.TURN_LIMIT)
-        self.players = {1: first, 2: second}
+        self.players = {1: first, 2: second}          # 1 = 흑(먼저), 2 = 백
+        self.logo, self.team = logo, team
         self.board = c4.Board()
         self.last: tuple[int, int] | None = None
         self.result = ""
@@ -341,7 +346,7 @@ class Connect4View(discord.ui.View):
     def embed(self, picture: bool = False) -> discord.Embed:
         p1, p2 = self.players[1], self.players[2]
         b = self.board
-        head = f"{c4.DISC[1]} {p1.mention}  vs  {c4.DISC[2]} {p2.mention}"
+        head = f"{c4.DISC[1]} 흑 {p1.mention}  vs  {c4.DISC[2]} 백 {p2.mention}"
         if self.result:
             status, color = self.result, COLOR_WARN
         elif b.winner:
@@ -351,7 +356,7 @@ class Connect4View(discord.ui.View):
         else:
             status, color = (f"{c4.DISC[b.turn]} {self.players[b.turn].mention} 님 차례 — 번호를 눌러 돌을 넣으세요 "
                              f"({self.TURN_LIMIT // 60}분 안에 안 두면 패배)"), COLOR_MAIN
-        e = discord.Embed(title="🔴🟡 사목", color=color)
+        e = discord.Embed(title="⚫⚪ 사목" + (f" · {self.team} 판" if self.team else ""), color=color)
         if picture:
             e.description = f"{head}\n\n{status}"
             e.set_image(url="attachment://connect4.png")
@@ -364,7 +369,7 @@ class Connect4View(discord.ui.View):
         if render_enabled():
             try:
                 async with _RENDER_SEM:
-                    png = await asyncio.to_thread(connect4_card.render_board, self.board, self.last)
+                    png = await asyncio.to_thread(connect4_card.render_board, self.board, self.last, self.logo)
                 return self.embed(picture=True), [_file(png, "connect4.png")]
             except Exception as exc:
                 log.warning("사목 판 그림 실패, 이모지 판으로: %s: %s", type(exc).__name__, exc)
@@ -433,19 +438,39 @@ class GameCommands(commands.Cog):
         return True
 
     @app_commands.command(name="사목", description="친구와 사목(4개 먼저 잇기) 대결! 상대를 지정하면 도전장을 보내요.")
-    @app_commands.describe(상대="같이 할 사람")
-    async def connect4(self, interaction: discord.Interaction, 상대: discord.Member) -> None:
+    @app_commands.describe(상대="같이 할 사람", 팀="판에 새길 팀 로고 (예: T1, 젠지) — 안 쓰면 기본 나무판")
+    @app_commands.autocomplete(팀=team_autocomplete)
+    async def connect4(self, interaction: discord.Interaction, 상대: discord.Member, 팀: str | None = None) -> None:
         if 상대.bot or 상대.id == interaction.user.id:
             await interaction.response.send_message(embed=error_embed("다른 사람(봇 제외)에게 도전해 주세요."), ephemeral=True)
             return
-        view = Connect4Invite(interaction.user, 상대)
-        e = discord.Embed(title="🔴🟡 사목 도전장",
+        logo, team_name = None, None
+        if 팀:
+            await interaction.response.defer()
+            try:
+                async with db.session() as s:
+                    found = await repo.find_team(s, 팀)
+            except Exception as exc:
+                log.warning("사목 팀 찾기 실패: %s: %s", type(exc).__name__, exc)
+                found = None
+            if found is None or found.team is None:
+                hint = ("혹시 " + ", ".join(f"`{t.name}`" for t in found.candidates) + " ?") if found and found.candidates else ""
+                await interaction.followup.send(embed=error_embed(f"'{팀}' 팀을 찾지 못했어요. {hint}"), ephemeral=True)
+                return
+            team_name = found.team.name
+            if found.team.logo_url:
+                logo = await images.fetch_image(found.team.logo_url)
+        view = Connect4Invite(interaction.user, 상대, logo=logo, team=team_name)
+        e = discord.Embed(title="⚫⚪ 사목 도전장" + (f" · {team_name} 판" if team_name else ""),
                           description=f"{interaction.user.mention} 님이 {상대.mention} 님에게 사목 대결을 신청했어요!\n"
                                       "가로·세로·대각선으로 돌 4개를 먼저 이으면 승리. 2분 안에 수락해 주세요.",
                           color=COLOR_MAIN)
-        await interaction.response.send_message(content=상대.mention, embed=e, view=view,
-                                                allowed_mentions=discord.AllowedMentions(users=[상대]))
-        view.message = await interaction.original_response()
+        kw = dict(content=상대.mention, embed=e, view=view, allowed_mentions=discord.AllowedMentions(users=[상대]))
+        if interaction.response.is_done():
+            view.message = await interaction.followup.send(wait=True, **kw)
+        else:
+            await interaction.response.send_message(**kw)
+            view.message = await interaction.original_response()
 
     @app_commands.command(name="동전", description="동전 던지기. 맞히면 1.95배!")
     @app_commands.describe(금액="걸 VP (10~2000)", 면="앞면 또는 뒷면")

@@ -1089,7 +1089,7 @@ class Connect4Test(unittest.TestCase):
         self.assertEqual(b.winner, 1)
         self.assertEqual(len(b.line), 4)
         self.assertIsNone(b.drop(2))            # 끝난 판에는 못 둠
-        self.assertIn("🟥", b.text())
+        self.assertIn("⬛", b.text())
 
     def test_diagonal_and_full_column(self):
         from bot.services import connect4 as c4

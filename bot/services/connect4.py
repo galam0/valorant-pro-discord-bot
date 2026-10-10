@@ -7,9 +7,9 @@ from __future__ import annotations
 
 ROWS, COLS = 6, 7
 EMPTY = 0
-DISC = {1: "🔴", 2: "🟡"}
-WIN_DISC = {1: "🟥", 2: "🟨"}      # 이긴 줄 표시
-HOLE = "⚫"
+DISC = {1: "⚫", 2: "⚪"}          # 흑돌·백돌
+WIN_DISC = {1: "⬛", 2: "⬜"}      # 이긴 줄 표시
+HOLE = "🟫"
 HEADER = "1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣"
 
 
