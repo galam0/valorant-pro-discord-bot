@@ -46,7 +46,7 @@ def skin_embed(s: ss.Skin, idx: int = 0) -> discord.Embed:
     if s.theme:
         lines.append(f"컬렉션 **{s.theme}**")
     if ss.price_text(s):
-        lines.append(f"가격 **{ss.price_text(s)}** (등급 기준)")
+        lines.append(f"가격 **{ss.price_text(s)}**")
     lines.append(f"레벨 {s.levels}개 · 색상 변형 {s.chromas}개")
     e.description = "\n".join(lines)
     label, image = s.variants[idx][0], s.variants[idx][1]

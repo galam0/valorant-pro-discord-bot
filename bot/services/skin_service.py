@@ -22,14 +22,48 @@ TTL = 6 * 3600
 STANDARD_THEME = "5a629df4-4765-0214-bd40-fbb96542941f"   # 기본 스킨 묶음 (목록에서 제외)
 _RANDOM = re.compile(r"random|무작위", re.I)
 _BUNDLE_SUFFIX = re.compile(r"\s*(컬렉션|번들|세트|collection|bundle|set)\s*$", re.I)
-# 등급별 일반 상점 가격 (VP, 총기 기준). 공개 API에는 가격이 없어서 등급으로 추정한다 — 근접 무기·특별 판매는 다를 수 있다.
-TIER_PRICE = {
-    "12683d76-48d7-84a3-4e09-6985794f0445": 875,    # 셀렉트
-    "0cebb8be-46d7-c12a-d306-e9907bfc5a25": 1275,   # 딜럭스
-    "60bca009-4182-7998-dee7-b8a2558dc369": 1775,   # 프리미엄
-    "411e4a55-4e59-7757-41f0-86a53f101bb5": 2175,   # 얼티밋
-    "e046854e-406c-37f4-6607-19a9ba8426fc": 2475,   # 익스클루시브
+# 공개 API에는 가격이 없다. 총기는 등급마다 상점 가격이 정해져 있어 등급으로 정한다
+# (셀렉트 875 · 딜럭스 1275 · 프리미엄 1775 · 얼티밋 2475 · 익스클루시브는 세트마다 달라 보통 2175 → '약').
+SELECT, DELUXE, PREMIUM, ULTRA, EXCLUSIVE = (
+    "12683d76-48d7-84a3-4e09-6985794f0445", "0cebb8be-46d7-c12a-d306-e9907bfc5a25",
+    "60bca009-4182-7998-dee7-b8a2558dc369", "411e4a55-4e59-7757-41f0-86a53f101bb5",
+    "e046854e-406c-37f4-6607-19a9ba8426fc")
+TIER_PRICE = {SELECT: 875, DELUXE: 1275, PREMIUM: 1775, ULTRA: 2475, EXCLUSIVE: 2175}
+APPROX_TIERS = {EXCLUSIVE}
+# 근접 무기는 등급이 같아도 값이 제각각이라 스킨별 실제 상점 가격을 쓴다 (영어 이름 기준).
+# 여기에 없는 (새로 나온) 근접 무기는 등급으로 어림한다 → '약'.
+MELEE_TIER_PRICE = {SELECT: 1750, DELUXE: 2550, PREMIUM: 3550, ULTRA: 4950, EXCLUSIVE: 4350}
+MELEE_PRICE_EN = {
+    1750: "Switchback Ascender, Luxe Knife, Prism Knife, Smite Knife, Reverie Sword",
+    2550: "Kaimana, Emberclad Hammer, Chromedek Gauntlet, No Limits Bat, Altitude Knuckle Knife, Winterwunderland Candy Cane, "
+          "Catrina, Radiant Crisis 001 Baseball Bat, Snowfall Wand, Titanmail Mace, Blade of Serket, Equilibrium, Caeruleus",
+    3550: "Blade of Aemondir, Eternal Sovereign, Black.Market Butterfly Knife, Prime Axe, Sovereign Sword, Oni Claw, "
+          "Glitchpop Dagger, Nebula Knife, Spine Dagger, Ego Knife, Gravitational Uranium Neuroblaster, Reaver Knife, "
+          "Ion Energy Sword, VALORANT GO! Vol. 1 Knife, Prime 2.0 Karambit, Forsaken Ritual Blade, Prosperity, "
+          "Origin Crescent Blade, Recon Balisong, Yoru's Stylish Butterfly Knife, Magepunk Shock Gauntlet, Hu Else, "
+          "Celestial Fan, Hack, Gaia's Wrath, Neptune Anchor, Xenohunter Knife, Crimsonbeast Hammer, Soulstrife Scythe, "
+          "Cryostasis Impact Drill, Luna's Descent",
+    3650: "Magepunk Electroblade",
+    4350: "Mystbloom Kunai, Blades of Primordia, XERØFANG Knife, Overdrive Blade, Relic Stone Daggers, Ruyi Staff, "
+          "Gaia's Vengeance 2.0, Blades of Imperium, Neo Frontier Axe, Magepunk Sparkswitch, BlastX Polymer KnifeTech Coated Knife, "
+          "Glitchpop Axe, Broken Blade of the Ruined King, Relic of the Sentinel, RGX 11z Pro Blade, "
+          "Personal Administrative Melee Unit, RGX 11z Pro Firefly, Blade of Chaos, Reaver Karambit, Terminus a Quo, "
+          "Ion Karambit, Araxys Bio Harvester, VCT LOCK//IN Misericórdia",
+    4550: "Singularity Knife",
+    4710: "Ignite Fan",
+    4950: "Elderflame Dagger",
+    5350: "Kuronami no Yaiba, Champions 2023 Kunai, Waveform, Champions 2021 Karambit, Champions 2022 Butterfly Knife, "
+          "Onimaru Kunitsuna",
+    5950: "Power Fist",
 }
+MELEE_WEAPON = "2f59173c-4bed-b6c3-2191-dea9b58be9c7"
+
+
+def _norm_en(name: str) -> str:
+    return re.sub(r"[^0-9a-zø]", "", (name or "").lower())
+
+
+MELEE_PRICE = {_norm_en(n): price for price, names in MELEE_PRICE_EN.items() for n in names.split(", ")}
 # 세트 목록에서 뺄 것: 역습 세트, VCT 클래식·팀 캡슐, 자선 세트
 EXCLUDED_BUNDLE = re.compile(r"역습|캡슐|자선|vct.*(클래식|classic)|(클래식|classic).*vct|charity|capsule|counter\s*/?\s*attack", re.I)
 Variant = tuple  # (색상 이름, 이미지 URL, 영상 URL)
@@ -48,9 +82,10 @@ class Skin:
     levels: int
     variants: list[tuple] = field(default_factory=list)   # (색상 이름, 이미지, 영상) — 첫 번째가 기본
     tier_icon: str | None = None
-    price: int | None = None        # 등급 기준 가격 (VP). 근접 무기·등급 없음은 None
+    price: int | None = None        # 상점 가격 (VP). 등급 없음(배틀패스 등)은 None
     melee: bool = False
     label: str = ""          # 목록·선택 메뉴에 보일 이름 (이름이 같은 스킨끼리는 구분 글자가 붙음)
+    approx: bool = False     # 가격이 어림값인지 (익스클루시브 총기, 가격표에 없는 근접 무기)
 
 
 @dataclass
@@ -134,7 +169,9 @@ def _disambiguate(skins: list[Skin]) -> None:
                 s.label = f"{s.name} ({i})"
 
 
-def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bundles: list[dict]) -> Catalog:
+def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bundles: list[dict],
+                  melee_en: dict[str, str] | None = None) -> Catalog:
+    """melee_en: 근접 무기 스킨 uuid → 영어 이름 (근접 무기 가격표를 찾는 데 씀)."""
     tier_by = {t.get("uuid"): t for t in tiers}
     theme_name = {t.get("uuid"): t.get("displayName") for t in themes}
     skins: list[Skin] = []
@@ -164,10 +201,10 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
                 elif img != base_img and all(img != e[1] for e in extras):
                     extras.append((_chroma_label(cname, name), img, c.get("streamedVideo") or skin_video))
             variants = [("기본", base_img, base_video)] + extras
-            price = None if melee else TIER_PRICE.get(s.get("contentTierUuid"))
+            price, approx = skin_price(s.get("contentTierUuid"), melee, (melee_en or {}).get(s["uuid"]))
             skins.append(Skin(s["uuid"], name, w.get("displayName") or "", tier.get("displayName"),
                               _color(tier.get("highlightColor")), base_img, theme_name.get(s.get("themeUuid")),
-                              len(extras), len(levels), variants, tier.get("displayIcon"), price, melee))
+                              len(extras), len(levels), variants, tier.get("displayIcon"), price, melee, approx=approx))
 
     _disambiguate(skins)
     by_theme: dict[str, list[Skin]] = {}
@@ -224,8 +261,24 @@ def parse_catalog(weapons: list[dict], tiers: list[dict], themes: list[dict], bu
     return cat
 
 
+def skin_price(tier_uuid: str | None, melee: bool, en_name: str | None = None) -> tuple[int | None, bool]:
+    """(가격, 어림값인지). 등급이 없으면 상점 판매가 아니라서(배틀패스·보상) 가격 없음."""
+    if not tier_uuid:
+        return None, False
+    if melee:
+        exact = MELEE_PRICE.get(_norm_en(en_name or ""))
+        if exact:
+            return exact, False
+        p = MELEE_TIER_PRICE.get(tier_uuid)
+        return p, p is not None
+    p = TIER_PRICE.get(tier_uuid)
+    return p, p is not None and tier_uuid in APPROX_TIERS
+
+
 def price_text(s: Skin) -> str | None:
-    return f"{s.price:,} VP" if s.price else None
+    if not s.price:
+        return None
+    return f"{'약 ' if s.approx else ''}{s.price:,} VP"
 
 
 def trailer_url(bundle_name: str) -> str:
@@ -267,10 +320,20 @@ _lock = asyncio.Lock()
 _task: asyncio.Task | None = None
 
 
-async def _get_json(session, path: str) -> list[dict]:
-    async with session.get(f"{API}/{path}{'&' if '?' in path else '?'}language={LANG}") as resp:
+async def _get_json(session, path: str, lang: str = LANG):
+    async with session.get(f"{API}/{path}{'&' if '?' in path else '?'}language={lang}") as resp:
         resp.raise_for_status()
         return (await resp.json()).get("data") or []
+
+
+async def _melee_en(session) -> dict[str, str]:
+    """근접 무기 스킨의 영어 이름 (가격표 찾기용). 실패해도 등급 어림값으로 동작."""
+    try:
+        w = await _get_json(session, f"weapons/{MELEE_WEAPON}", "en-US")
+        return {s["uuid"]: s.get("displayName") or "" for s in (w.get("skins") or []) if s.get("uuid")}
+    except Exception as exc:
+        log.warning("근접 무기 영어 이름 못 받음 (가격은 등급 어림값): %s: %s", type(exc).__name__, exc)
+        return {}
 
 
 async def load(force: bool = False) -> Catalog:
@@ -282,13 +345,16 @@ async def load(force: bool = False) -> Catalog:
 
         timeout = aiohttp.ClientTimeout(total=30)
         async with aiohttp.ClientSession(timeout=timeout, headers={"User-Agent": "ValoProBot/0.3"}) as session:
-            weapons, tiers, themes, bundles = await asyncio.gather(
+            weapons, tiers, themes, bundles, melee_en = await asyncio.gather(
                 _get_json(session, "weapons"), _get_json(session, "contenttiers"),
-                _get_json(session, "themes"), _get_json(session, "bundles"))
-        cat = parse_catalog(weapons, tiers, themes, bundles)
+                _get_json(session, "themes"), _get_json(session, "bundles"), _melee_en(session))
+        cat = parse_catalog(weapons, tiers, themes, bundles, melee_en)
         cat.loaded_at = time.monotonic()
         _catalog = cat
         log.info("스킨 목록 불러옴: 스킨 %d · 번들 %d", len(cat.skins), len(cat.bundles))
+        melee = [s for s in cat.skins if s.melee and s.price]
+        log.info("근접 무기 가격: 가격표 %d개 · 어림값 %d개 (어림: %s)", sum(not s.approx for s in melee),
+                 sum(s.approx for s in melee), ", ".join(s.name for s in melee if s.approx))
         log.info("목록에 있는 세트 %d개: %s", len(cat.bundles), ", ".join(f"{b.name}[{len(b.skins)}]" for b in cat.bundles))
         if cat.dropped:
             log.info("목록에서 빠진 세트 %d개: %s", len(cat.dropped), ", ".join(f"{n}({r})" for n, r in cat.dropped))

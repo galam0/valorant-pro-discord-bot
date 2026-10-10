@@ -899,11 +899,20 @@ class SkinCatalogTest(unittest.TestCase):
         self.assertEqual((s.icon, s.tier, s.color, s.chromas, s.levels), ("cd", "얼티밋 에디션", 0xF5955C, 2, 4))
         # 기본 색(스킨 이름과 같은 항목)은 하나로 합치고, 같은 이미지·빈 이미지는 제외. 영상은 없으면 스킨 영상으로
         self.assertEqual(s.variants, [("기본", "cd", "vid"), ("보라색", "c1", "vid"), ("초록색", "c2", "v2")])
-        self.assertEqual((s.price, s.tier_icon, ss.price_text(s)), (2175, "ti", "2,175 VP"))
-        self.assertIsNone(cat.skins[1].price)                           # 근접 무기는 가격 추정 안 함
+        self.assertEqual((s.price, s.tier_icon, ss.price_text(s)), (2475, "ti", "2,475 VP"))   # 얼티밋
+        self.assertEqual(ss.price_text(cat.skins[1]), "약 4,950 VP")    # 가격표에 없는 근접 무기 → 등급 어림값
         self.assertIn("youtube.com/results", ss.trailer_url("리버"))
         self.assertEqual([x.uuid for x in cat.bundles[0].skins], ["s1", "s3"])   # '리버 컬렉션' 테마 = '리버' 번들
         self.assertEqual([b.uuid for b in cat.bundles], ["b1"])         # 스킨 없는 세트('없는 번들')는 목록에서 제외
+
+    def test_melee_and_exclusive_prices(self):
+        from bot.services import skin_service as ss
+        self.assertEqual(ss.skin_price(ss.PREMIUM, True, "Reaver Knife"), (3550, False))
+        self.assertEqual(ss.skin_price(ss.EXCLUSIVE, True, "Champions 2023 Kunai"), (5350, False))
+        self.assertEqual(ss.skin_price(ss.ULTRA, True, "RGX 11z Pro Blade"), (4350, False))   # 띄어쓰기·대소문자 무시
+        self.assertEqual(ss.skin_price(ss.EXCLUSIVE, False), (2175, True))
+        self.assertEqual(ss.skin_price(ss.SELECT, False), (875, False))
+        self.assertEqual(ss.skin_price(None, True, "Reaver Knife"), (None, False))          # 배틀패스 등
 
     def test_search(self):
         ss, cat = self._cat()

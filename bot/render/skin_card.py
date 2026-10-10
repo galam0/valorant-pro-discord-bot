@@ -94,7 +94,7 @@ def render_skin_card(skin, idx: int, weapon_img: Image.Image | None, tier_img: I
     y = 396
     x = 40
     price = price_text(skin)
-    x = _chip(d, x, y, "가격 (등급 기준)", price or "정보 없음", accent)
+    x = _chip(d, x, y, "가격", price or "정보 없음", accent)
     x = _chip(d, x, y, "레벨", f"{skin.levels}단계" if skin.levels else "-", accent)
     x = _chip(d, x, y, "색상 변형", f"{skin.chromas}개", accent)
 
@@ -149,7 +149,7 @@ def render_set_card(bundle, images: dict[str, Image.Image | None]) -> bytes:
         d.text((W - 54, y + 19), p or "-", font=font("bold", 16), fill=TEXT, anchor="rm")
     if len(bundle.skins) > MAX_ROWS:
         d.text((x0, 124 + rows * 44 + 4), f"…외 {len(bundle.skins) - MAX_ROWS}개", font=font("regular", 16), fill=MUTED)
-    d.text((W - 40, h - 20), "가격은 등급 기준 일반 가격이에요", font=font("regular", 13), fill=MUTED, anchor="rm")
+    d.text((W - 40, h - 20), "'약'이 붙은 가격은 어림값이에요", font=font("regular", 13), fill=MUTED, anchor="rm")
     return _png(img)
 
 
