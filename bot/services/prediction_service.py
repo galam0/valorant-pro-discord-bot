@@ -124,6 +124,9 @@ async def load_market(vlr_id: int) -> Market:
     try:
         full = await _vlr_page(vlr_id)
         vlr_odds = full.detail.odds
+        if vlr_odds is not None:
+            log.info("배당 출처 (match %s): %s · GG.bet %s", vlr_id, ", ".join(vlr_odds.books) or "?",
+                     "있음" if vlr_odds.gg_p1 is not None else "없음")
         info["best_of"] = full.best_of or info["best_of"]
         if full.status in ("live", "completed"):
             info["status"] = full.status

@@ -62,13 +62,24 @@ class Odds:
     team1_p: float
     winner: tuple[float, float]               # (팀1 승, 팀2 승) 배율
     from_vlr: bool                            # VLR 배당을 썼는지 (False면 기본 배율)
+    gg_p: float | None = None                 # GG.bet 배당 기준 팀1 승리 확률 (있을 때만)
 
 
 def build_odds(vlr: object | None) -> Odds:
     """vlr: parse_match_odds 결과(MatchOdds) 또는 None."""
     if vlr is None:
         return Odds(0.5, (DEFAULT_ODDS, DEFAULT_ODDS), False)
-    return Odds(float(vlr.p1), (float(vlr.team1_odds), float(vlr.team2_odds)), True)  # type: ignore[attr-defined]
+    gg = getattr(vlr, "gg_p1", None)
+    return Odds(float(vlr.p1), (float(vlr.team1_odds), float(vlr.team2_odds)), True,  # type: ignore[attr-defined]
+                float(gg) if gg is not None else None)
+
+
+def win_chance_text(odds: Odds, team1: str, team2: str) -> str | None:
+    """'T1 62% · GEN 38% (GG.bet 배당 기준)'. 배당이 없으면 None."""
+    if not odds.from_vlr:
+        return None
+    p, src = (odds.gg_p, "GG.bet") if odds.gg_p is not None else (odds.team1_p, "배당 평균")
+    return f"**{team1}** {p:.0%} · **{team2}** {1 - p:.0%}  ({src} 기준)"
 
 
 def score_options(p1: float, best_of: str | None) -> list[tuple[str, float]]:

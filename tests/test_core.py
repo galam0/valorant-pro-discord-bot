@@ -477,6 +477,22 @@ class OddsParseTest(unittest.TestCase):
         self.assertEqual((o.team1_odds, o.team2_odds, o.sources), (1.43, 2.73, 3))
         self.assertTrue(0.6 < o.p1 < 0.7)   # 1.43 쪽이 우세
 
+    def test_ggbet_probability(self):
+        from bs4 import BeautifulSoup
+        from bot.services import odds_model as om
+
+        gg = _bet("1.25", "3.75").replace('<div class="match-bet-item-half mod-1">',
+                                         '<img src="/img/bet/ggbet.png" alt="GG.BET"><div class="match-bet-item-half mod-1">')
+        o = parse_match_odds(BeautifulSoup(_bet("2.0", "2.0") + gg, "html.parser"))
+        self.assertAlmostEqual(o.gg_p1, 0.75)
+        self.assertEqual(o.books[1], "GG.bet")
+        text = om.win_chance_text(om.build_odds(o), "T1", "GEN")
+        self.assertEqual(text, "**T1** 75% · **GEN** 25%  (GG.bet 기준)")
+        o2 = parse_match_odds(BeautifulSoup(_bet("2.0", "2.0"), "html.parser"))
+        self.assertIsNone(o2.gg_p1)
+        self.assertIn("배당 평균", om.win_chance_text(om.build_odds(o2), "A", "B"))
+        self.assertIsNone(om.win_chance_text(om.build_odds(None), "A", "B"))
+
     def test_ignores_live_and_garbage(self):
         from bs4 import BeautifulSoup
 

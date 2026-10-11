@@ -41,6 +41,9 @@ def market_embed(m, mine: list, state: str) -> discord.Embed:
     src = "VLR.gg 배당 기준" if m.odds.from_vlr else "기본 배율 (VLR 배당 없음)"
     embed.add_field(name=f"승패 · {src}",
                     value=f"**{m.team1}** ×{m.odds.winner[0]:.2f}\n**{m.team2}** ×{m.odds.winner[1]:.2f}", inline=False)
+    chance = om.win_chance_text(m.odds, m.team1, m.team2)
+    if chance:
+        embed.add_field(name="📊 승리 확률", value=chance, inline=False)
     if m.score_options():
         embed.add_field(name="맵 스코어", value=" · ".join(f"`{s.replace('-', ':')}` ×{x:.2f}" for s, x in m.score_options()), inline=False)
     else:
