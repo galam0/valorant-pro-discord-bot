@@ -516,6 +516,58 @@ class TeamMapsTest(unittest.TestCase):
 
 
 
+
+class RiotStatsTest(unittest.TestCase):
+    MATCH = {
+        "metadata": {"map": {"name": "Lotus"}, "queue": {"id": "competitive"}, "started_at": "2026-10-12T10:00:00Z"},
+        "players": [
+            {"puuid": "p1", "name": "Me", "tag": "KR1", "team_id": "Red", "agent": {"id": "a1", "name": "Jett"},
+             "account_level": 120,
+             "stats": {"kills": 20, "deaths": 10, "assists": 5, "headshots": 10, "bodyshots": 30, "legshots": 10,
+                       "damage": {"dealt": 3000}}},
+            {"puuid": "p2", "name": "Foe", "tag": "X", "team_id": "Blue", "agent": {"id": "a2", "name": "Sage"}, "stats": {}},
+        ],
+        "teams": [{"team_id": "Red", "won": True, "rounds": {"won": 13, "lost": 7}},
+                  {"team_id": "Blue", "won": False, "rounds": {"won": 7, "lost": 13}}],
+    }
+
+    def test_tier_names(self):
+        from bot.services.riot_stats import tier_ko
+        self.assertEqual(tier_ko(0), "언랭크")
+        self.assertEqual(tier_ko(3), "아이언 1")
+        self.assertEqual(tier_ko(14), "골드 3")
+        self.assertEqual(tier_ko(24), "불멸 1")
+        self.assertEqual(tier_ko(27), "래디언트")
+
+    def test_riot_id(self):
+        from bot.services.riot_stats import RiotError, parse_riot_id
+        self.assertEqual(parse_riot_id(" Hide on bush#KR1 "), ("Hide on bush", "KR1"))
+        for bad in ("", "abc", "#KR1", "abc#", "a" * 20 + "#KR1"):
+            with self.assertRaises(RiotError):
+                parse_riot_id(bad)
+
+    def test_parse_match(self):
+        from bot.services.riot_stats import parse_match
+        m = parse_match(self.MATCH, "p1", "Me", "KR1")
+        self.assertTrue(m.won)
+        self.assertEqual((m.rounds_won, m.rounds_lost, m.kills, m.deaths), (13, 7, 20, 10))
+        self.assertEqual(m.map_name, "로터스")
+        self.assertEqual(m.mode, "경쟁전")
+        self.assertAlmostEqual(m.hs_pct, 20.0)
+        self.assertAlmostEqual(m.adr, 150.0)
+        self.assertIsNone(parse_match(self.MATCH, "zz", "Nobody", "1"))
+
+    def test_card_renders(self):
+        from bot.render.riot_card import render_user_card
+        from bot.services.riot_stats import UserStats, parse_match, parse_mmr
+        s = UserStats(name="Me", tag="KR1", region="kr")
+        parse_mmr({"current": {"tier": {"id": 21}, "rr": 45, "last_change": -12},
+                   "peak": {"tier": {"id": 24}, "season": {"short": "e9a1"}}}, s)
+        s.matches = [parse_match(self.MATCH, "p1", "Me", "KR1")] * 3
+        self.assertTrue(render_user_card(s, None, {}).startswith(PNG))
+        self.assertTrue(render_user_card(UserStats(name="N", tag="T", region="kr"), None, {}).startswith(PNG))
+
+
 if __name__ == "__main__":
     unittest.main()
 

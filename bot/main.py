@@ -245,6 +245,8 @@ async def amain(token: str) -> None:
         scheduler.stop()
         await http_client.close()
         await card_images.close()
+        from bot.services import riot_stats
+        await riot_stats.close()
         await db.dispose()
         if health:
             await health.stop()

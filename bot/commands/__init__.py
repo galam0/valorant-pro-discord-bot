@@ -21,6 +21,7 @@ EXTENSIONS = (
     "bot.commands.bracket",
     "bot.commands.skins",
     "bot.commands.connect4",
+    "bot.commands.riot",
     "bot.commands.admin",
 )
 

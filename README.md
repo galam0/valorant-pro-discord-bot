@@ -107,6 +107,7 @@ python -m bot.main
 | `DISCORD_TOKEN` | ✅ | 봇 토큰 |
 | `DATABASE_URL` | Phase 2~ | PostgreSQL 연결 문자열 |
 | `ADMIN_USER_IDS` | | 관리자 사용자 ID (쉼표 구분) |
+| `HENRIK_API_KEY` | | `/유저전적`용 [HenrikDev](https://api.henrikdev.xyz/dashboard/) 비공식 API 키. 없으면 그 명령어만 꺼짐 |
 | `LOG_LEVEL` | | 기본 `INFO` |
 | `PROSETTINGS_ENABLED` | | ProSettings 수집 (기본 `0`, 허가 전까지 꺼둠) |
 | `SCHEDULER_ENABLED` | | 자동 갱신 사용 (기본 `1`) |

@@ -61,6 +61,8 @@ class Settings:
     player_command_enabled: bool = field(
         default_factory=lambda: os.getenv("PLAYER_COMMAND_ENABLED", "0").strip().lower() in {"1", "true", "yes"}
     )
+    # 일반 유저 전적(/유저전적)용 HenrikDev 비공식 API 키 (없으면 그 명령어만 꺼짐)
+    henrik_api_key: str | None = field(default_factory=lambda: os.getenv("HENRIK_API_KEY") or None)
     # 시작할 때 Alembic 마이그레이션을 자동 적용할지 (기본 켬)
     auto_migrate: bool = field(
         default_factory=lambda: os.getenv("AUTO_MIGRATE", "1").strip().lower() not in {"0", "false", "no"}
