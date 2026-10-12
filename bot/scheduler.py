@@ -21,12 +21,11 @@ import os
 
 from bot.database.database import db
 from bot.scrapers.vlr import vlr
-from bot.services import match_service, prediction_service, stock_service, team_service
+from bot.services import match_service, team_service
 
 log = logging.getLogger("valobot.scheduler")
 
 MAX_LIVE_DETAILS = 6          # 한 번에 상세를 저장할 진행 중 경기 수 (요청 간격 2초 × 6 = 12초)
-ALERT_BEFORE_MIN = 30         # 경기 시작 이 분 전에 알림 채널에 알린다
 _live_ids: set[int] = set()   # 직전 확인 때 진행 중이던 경기 (끝났는지 알아내기 위해)
 
 try:  # 패키지가 없어도 봇은 떠야 한다
@@ -37,8 +36,6 @@ except ImportError:  # pragma: no cover
     CronTrigger = None  # type: ignore[assignment,misc]
 
 _scheduler: "AsyncIOScheduler | None" = None
-broadcaster = None            # async (embed) -> None   (main 에서 연결, 모든 서버의 알림 채널)
-_alerted: set[int] = set()    # 알림을 예약했거나 보낸 경기 (같은 경기를 두 번 알리지 않게)
 
 
 def enabled() -> bool:
@@ -54,64 +51,8 @@ async def job_matches() -> None:
     try:
         count = await match_service.refresh_matches(include_results=True)
         log.info("[자동] 경기 목록 갱신: %d개", count)
-        await _settle_sweep()
-        await _schedule_alerts()
     except Exception as exc:
         log.warning("[자동] 경기 목록 갱신 실패: %s: %s", type(exc).__name__, exc)
-
-
-async def _schedule_alerts() -> None:
-    """앞으로 1시간 안에 시작하는 경기마다 '시작 30분 전' 알림을 예약한다 (경기 목록 갱신 직후라 DB는 깨어 있음)."""
-    if broadcaster is None or _scheduler is None:
-        return
-    from datetime import datetime, timedelta, timezone
-
-    from bot.database import repository as repo   # (import 시점 비용·테스트 편의를 위해 안에서)
-
-    now = datetime.now(timezone.utc)
-    try:
-        async with db.session() as s:
-            rows = await repo.get_matches_between(s, now, now + timedelta(minutes=70))
-    except Exception as exc:
-        log.warning("[자동] 경기 알림 예약 실패: %s: %s", type(exc).__name__, exc)
-        return
-    for m in rows:
-        if m.status != "upcoming" or m.vlr_id in _alerted or m.scheduled_at is None:
-            continue
-        if prediction_service.is_tbd(m.team1_name) or prediction_service.is_tbd(m.team2_name):
-            continue
-        fire = max(m.scheduled_at - timedelta(minutes=ALERT_BEFORE_MIN), now + timedelta(seconds=5))
-        if fire >= m.scheduled_at - timedelta(minutes=10):     # 이미 예측 마감이 가까우면 알리지 않는다
-            continue
-        _alerted.add(m.vlr_id)
-        _scheduler.add_job(_send_alert, "date", run_date=fire, id=f"alert-{m.vlr_id}", replace_existing=True,
-                           args=[m.team1_name, m.team2_name, m.tournament_name, m.scheduled_at], misfire_grace_time=300)
-        log.info("[자동] 경기 알림 예약: %s vs %s (%s)", m.team1_name, m.team2_name, fire.isoformat(timespec="minutes"))
-
-
-async def _send_alert(team1: str, team2: str, tournament: str | None, scheduled_at) -> None:
-    from bot.embeds.prediction import match_alert_embed
-
-    async def fans_for(guild_id: int) -> list[int]:
-        from bot.database import economy
-        from bot.services import odds_model
-
-        async with db.session() as s:
-            rows = await economy.fav_team_rows(s, guild_id)
-        return odds_model.pick_fans(rows, team1, team2)
-
-    try:
-        await broadcaster(match_alert_embed(team1, team2, tournament, scheduled_at), fans_for)
-    except Exception as exc:
-        log.warning("[자동] 경기 알림 전송 실패: %s: %s", type(exc).__name__, exc)
-
-
-async def _settle_sweep() -> None:
-    """열린 예측이 남은 끝난 경기를 정산 (놓친 경기 보완). 경기 목록 갱신 직후라 DB는 이미 깨어 있다."""
-    try:
-        await prediction_service.settle_finished()
-    except Exception as exc:
-        log.warning("[자동] 예측 정산 실패: %s: %s", type(exc).__name__, exc)
 
 
 async def job_live() -> None:
@@ -138,24 +79,6 @@ async def job_live() -> None:
         except Exception as exc:
             log.warning("[자동] 경기 상세 저장 실패 (%s): %s: %s", vlr_id, type(exc).__name__, exc)
     log.info("[자동] 진행 중 %d경기 · 방금 종료 %d경기 → 상세 %d건 저장", len(live), len(just_ended), saved)
-    for vlr_id in just_ended[:MAX_LIVE_DETAILS]:     # 방금 끝난 경기는 바로 예측 정산 (DB는 이미 깨어 있음)
-        try:
-            await prediction_service.settle_match(vlr_id)
-        except Exception as exc:
-            log.warning("[자동] 예측 정산 실패 (%s): %s: %s", vlr_id, type(exc).__name__, exc)
-
-
-async def job_stocks() -> None:
-    """가상 주식 가격 변동 (매시 정각)."""
-    try:
-        surges = await stock_service.tick()
-        log.info("[자동] 주가 변동 (급등락 %d종목)", len(surges))
-        if surges and broadcaster is not None:
-            from bot.embeds.stock import surge_embed
-
-            await broadcaster(surge_embed(surges))
-    except Exception as exc:
-        log.warning("[자동] 주가 변동 실패: %s: %s", type(exc).__name__, exc)
 
 
 async def job_teams() -> None:
@@ -196,9 +119,6 @@ def start() -> None:
                   next_run_time=_in(seconds=90), **common)
     sched.add_job(job_live, "interval", minutes=10, id="live", jitter=10,
                   next_run_time=_in(seconds=150), **common)
-    # 주가는 매시 정각에 한 번 (놓쳐도 30분 안에 켜지면 실행) — /주식시간 의 계산과 같은 규칙
-    sched.add_job(job_stocks, CronTrigger(minute=0, timezone="Asia/Seoul"), id="stocks",
-                  **{**common, "misfire_grace_time": 1800})
     # 재배포·재시작으로 그 시각을 놓쳐도 6시간 안에 켜지면 실행
     sched.add_job(job_teams, CronTrigger(month="1,3,5,7,9,11", day=1, hour=4, minute=30, timezone="Asia/Seoul"),
                   id="teams", **{**common, "misfire_grace_time": 6 * 3600})

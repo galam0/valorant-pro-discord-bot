@@ -19,8 +19,6 @@ from bot.commands import EXTENSIONS, install_error_handler
 from bot.database.database import db
 from bot.render import images as card_images
 from bot.scrapers.http import http_client
-from bot.services import prediction_service
-from bot.services.announce import make_announcer, make_broadcaster
 from bot.utils.config import settings
 from bot.worker_bridge import bridge
 from bot.utils.logger import setup_logging
@@ -141,8 +139,6 @@ class ValorantBot(commands.Bot):
     async def setup_hook(self) -> None:
         """로그인 직후 1회 실행. 명령어(Cog)를 불러온다. (동기화는 서버 목록을 안 뒤 on_ready에서)"""
         install_error_handler(self.tree)
-        prediction_service.announcer = make_announcer(self)   # 예측 정산 결과 → 서버 알림 채널
-        scheduler.broadcaster = make_broadcaster(self)        # 경기 시작 알림 → 모든 서버 알림 채널
         for ext in EXTENSIONS:
             await self.load_extension(ext)
 
@@ -169,14 +165,13 @@ class ValorantBot(commands.Bot):
         if self._commands_synced:  # 재연결 때마다 다시 하지 않음
             return
         self._commands_synced = True
-        asyncio.create_task(self._prewarm_games())
         from bot.services import skin_service
         skin_service.cached()   # 스킨 목록을 미리 불러오기 시작 (자동완성이 바로 뜨도록)
         from bot.services import tier_emoji
         asyncio.create_task(tier_emoji.ensure(self))   # 등급 아이콘 이모지 준비 (뒤에서)
 
         async def warm_sets() -> None:
-            await asyncio.sleep(120)      # 게임 GIF 미리 만들기가 끝난 뒤, 한 장씩 천천히
+            await asyncio.sleep(120)      # 시작 직후 부하가 몰리지 않게, 한 장씩 천천히
             try:
                 await skin_service.warm_icons(await skin_service.load())
             except Exception as exc:
@@ -193,22 +188,6 @@ class ValorantBot(commands.Bot):
             except discord.HTTPException as exc:
                 logger.warning("명령어 동기화 실패 (%s): %s", guild.name, exc)
         logger.info("명령어 동기화 완료: 서버 %d/%d곳", ok, len(self.guilds))
-
-    async def _prewarm_games(self) -> None:
-        """게임 GIF를 미리 만들어 둔다 (첫 사용자가 기다리지 않도록). 명령어 응답을 방해하지 않게 천천히."""
-        from bot.render import game_anim
-
-        await asyncio.sleep(20)
-        t0 = time.monotonic()
-        jobs = game_anim.prewarm_jobs()
-        try:
-            for job in jobs:
-                await asyncio.to_thread(job)
-                await asyncio.sleep(1.0)
-        except Exception:
-            logger.exception("게임 GIF 미리 만들기 실패")
-            return
-        logger.info("게임 GIF %d개 미리 만들기 완료 (%.0f초)", len(jobs), time.monotonic() - t0)
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         """새 서버에 초대되면 바로 그 서버에 명령어를 등록한다."""

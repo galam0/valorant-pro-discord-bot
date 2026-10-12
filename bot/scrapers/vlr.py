@@ -150,24 +150,6 @@ class MatchDetail:
     team1: MatchTeamRef | None
     team2: MatchTeamRef | None
     event: EventRef | None
-    odds: "MatchOdds | None" = None   # 경기 전 배당 (예측 게임용)
-
-
-@dataclass
-class MatchOdds:
-    """경기 페이지 'Betting' 칸의 경기 전(pre-match) 배당. 여러 곳의 값을 평균낸다.
-
-    우리 봇은 가상 재화(VP) 게임과 '승리 확률(%)' 표시에만 쓴다 (링크·광고는 넣지 않음).
-    team1_odds/team2_odds: 사이트 배당의 평균 (예: 1.43 / 2.73) → 승패 배율로 그대로 사용
-    p1: 배당에서 수수료(오버라운드)를 걷어낸 팀1 승리 확률 (스코어·MVP 배율 계산용)
-    """
-
-    team1_odds: float
-    team2_odds: float
-    p1: float
-    sources: int
-    gg_p1: float | None = None          # GG.bet 배당만으로 구한 팀1 승리 확률 (페이지에 있을 때)
-    books: tuple[str, ...] = ()         # 배당을 낸 곳 (진단용)
 
 
 # ---------------------------------------------------------------------------
@@ -458,57 +440,6 @@ def parse_matches_list(html: str) -> list[MatchListItem]:
     return items
 
 
-_books_logged = False
-
-
-def parse_match_odds(soup: BeautifulSoup) -> MatchOdds | None:
-    """a.match-bet-item (.mod-1/.mod-2 의 .match-bet-item-odds). 경기 전 배당만, 비정상 값은 버린다."""
-    pairs: list[tuple[float, float]] = []
-    books: list[str] = []
-    gg: tuple[float, float] | None = None
-    for item in soup.select("a.match-bet-item"):
-        note = _text(item.select_one(".match-bet-item-note")).lower()
-        if note and "pre" not in note:      # 'Live' 배당은 경기 중 값이라 제외
-            continue
-        o1 = _num(_text(item.select_one(".match-bet-item-odds.mod-1")))
-        o2 = _num(_text(item.select_one(".match-bet-item-odds.mod-2")))
-        if o1 and o2 and o1 > 1.0 and o2 > 1.0:
-            pairs.append((o1, o2))
-            book = _book_name(item)
-            books.append(book)
-            if gg is None and re.sub(r"[^a-z]", "", book.lower()).startswith("ggbet"):
-                gg = (o1, o2)
-    global _books_logged
-    if books and not _books_logged:
-        _books_logged = True
-        log.info("VLR 배당 출처 예시: %s", ", ".join(books))
-    if not pairs:
-        return None
-    probs = [(1 / a) / ((1 / a) + (1 / b)) for a, b in pairs]
-    return MatchOdds(
-        team1_odds=round(sum(a for a, _ in pairs) / len(pairs), 2),
-        team2_odds=round(sum(b for _, b in pairs) / len(pairs), 2),
-        p1=sum(probs) / len(probs),
-        sources=len(pairs),
-        gg_p1=(1 / gg[0]) / ((1 / gg[0]) + (1 / gg[1])) if gg else None,
-        books=tuple(books),
-    )
-
-
-def _book_name(item) -> str:
-    """배당 칸이 어느 사이트 것인지: 로고 그림의 alt/주소 → 링크 → 칸 클래스 순으로 찾는다."""
-    parts = []
-    for img in item.select("img"):
-        parts += [img.get("alt") or "", img.get("src") or ""]
-    parts += [item.get("href") or "", " ".join(item.get("class") or []), item.get("title") or ""]
-    blob = " ".join(p for p in parts if p).lower()
-    m = re.search(r"gg[\s._-]?bet", blob)
-    if m:
-        return "GG.bet"
-    m = re.search(r"/([a-z0-9-]+)\.(?:png|svg|webp|jpe?g)", blob) or re.search(r"https?://(?:www\.)?([a-z0-9-]+)\.", blob)
-    return m.group(1) if m else (blob[:40] or "?")
-
-
 def parse_match_page(html: str, vlr_id: int) -> MatchDetail:
     soup = _soup(html)
 
@@ -557,7 +488,6 @@ def parse_match_page(html: str, vlr_id: int) -> MatchDetail:
         team1=teams[0] if len(teams) > 0 else None,
         team2=teams[1] if len(teams) > 1 else None,
         event=event,
-        odds=parse_match_odds(soup),
     )
 
 

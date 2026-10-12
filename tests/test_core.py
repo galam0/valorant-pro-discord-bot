@@ -12,7 +12,7 @@ from bot.render.compare_card import render_compare_card
 from bot.render.player_card import render_player_card
 from bot.render.ranking_card import render_ranking_card
 from bot.render.bracket_card import render_bracket_card
-from bot.scrapers.vlr import parse_match_odds, ParseError, parse_event_bracket, parse_player_page, parse_rankings, parse_search_events
+from bot.scrapers.vlr import ParseError, parse_event_bracket, parse_player_page, parse_rankings, parse_search_events
 from bot.render.schedule_card import render_schedule_card
 from bot.render.player_stats_card import player_stats_data, render_player_stats_card
 from bot.services.ranking_service import _tokens, is_first_team
@@ -461,114 +461,8 @@ class PlayerCompareTest(unittest.TestCase):
         self.assertTrue(png.startswith(b"\x89PNG"))
 
 
-def _bet(o1, o2, note="Pre-match"):
-    return (f'<a href="/rr/bet/1" class="wf-card mod-dark match-bet-item"><div class="match-bet-item-half mod-1">'
-            f'<span class="match-bet-item-team-name">A</span><span class="match-bet-item-odds mod- mod-1">{o1}</span></div>'
-            f'<div class="match-bet-item-half mod-2"><span class="match-bet-item-odds mod- mod-2">{o2}</span>'
-            f'<span class="match-bet-item-team-name">B</span><div class="match-bet-item-note">{note}</div></div></a>')
 
 
-class OddsParseTest(unittest.TestCase):
-    def test_average_and_probability(self):
-        from bs4 import BeautifulSoup
-
-        soup = BeautifulSoup(_bet("1.44", "2.66") + _bet("1.44", "2.66") + _bet("1.40", "2.88"), "html.parser")
-        o = parse_match_odds(soup)
-        self.assertEqual((o.team1_odds, o.team2_odds, o.sources), (1.43, 2.73, 3))
-        self.assertTrue(0.6 < o.p1 < 0.7)   # 1.43 쪽이 우세
-
-    def test_ggbet_probability(self):
-        from bs4 import BeautifulSoup
-        from bot.services import odds_model as om
-
-        gg = _bet("1.25", "3.75").replace('<div class="match-bet-item-half mod-1">',
-                                         '<img src="/img/bet/ggbet.png" alt="GG.BET"><div class="match-bet-item-half mod-1">')
-        o = parse_match_odds(BeautifulSoup(_bet("2.0", "2.0") + gg, "html.parser"))
-        self.assertAlmostEqual(o.gg_p1, 0.75)
-        self.assertEqual(o.books[1], "GG.bet")
-        text = om.win_chance_text(om.build_odds(o), "T1", "GEN")
-        self.assertEqual(text, "**T1** 75% · **GEN** 25%  (GG.bet 기준)")
-        o2 = parse_match_odds(BeautifulSoup(_bet("2.0", "2.0"), "html.parser"))
-        self.assertIsNone(o2.gg_p1)
-        self.assertIn("배당 평균", om.win_chance_text(om.build_odds(o2), "A", "B"))
-        self.assertIsNone(om.win_chance_text(om.build_odds(None), "A", "B"))
-
-    def test_ignores_live_and_garbage(self):
-        from bs4 import BeautifulSoup
-
-        self.assertIsNone(parse_match_odds(BeautifulSoup(_bet("1.1", "5.0", "Live"), "html.parser")))
-        self.assertIsNone(parse_match_odds(BeautifulSoup(_bet("-", "x"), "html.parser")))
-        self.assertIsNone(parse_match_odds(BeautifulSoup("<div></div>", "html.parser")))
-
-
-class OddsModelTest(unittest.TestCase):
-    def test_wins_needed(self):
-        from bot.services.odds_model import wins_needed
-
-        self.assertEqual([wins_needed(x) for x in ("BO1", "BO3", "BO5", None, "")], [1, 2, 3, None, None])
-
-    def test_map_prob_roundtrip(self):
-        from bot.services.odds_model import map_win_prob, series_win_prob
-
-        for n in (2, 3):
-            for p in (0.2, 0.5, 0.68, 0.9):
-                self.assertAlmostEqual(series_win_prob(map_win_prob(p, n), n), p, places=6)
-
-    def test_score_options_probabilities_sum_to_one(self):
-        from bot.services.odds_model import HOUSE_EDGE, score_options
-
-        for bo, count in (("BO3", 4), ("BO5", 6)):
-            opts = score_options(0.65, bo)
-            self.assertEqual(len(opts), count)
-            # 배율 = 0.95/확률 → 확률 합이 1 이어야 한다 (상·하한에 걸린 항목이 없는 범위)
-            self.assertAlmostEqual(sum((1 - HOUSE_EDGE) / m for _, m in opts), 1.0, delta=0.08)
-        self.assertEqual(score_options(0.5, "BO1"), [])
-        favorite = dict(score_options(0.8, "BO3"))
-        self.assertLess(favorite["2-0"], favorite["0-2"])   # 우세 팀의 2:0 이 더 낮은 배율
-
-    def test_mvp_multiplier(self):
-        from bot.services.odds_model import mvp_multiplier
-
-        self.assertLess(mvp_multiplier(0.8), mvp_multiplier(0.5))   # 우세 팀 선수가 낮은 배율
-        self.assertLess(mvp_multiplier(0.5), mvp_multiplier(0.2))
-        self.assertTrue(3.0 <= mvp_multiplier(0.99) <= 30.0)
-
-    def test_build_odds_fallback_and_payout(self):
-        from bot.services.odds_model import build_odds, payout
-
-        o = build_odds(None)
-        self.assertEqual((o.winner, o.from_vlr, o.team1_p), ((1.9, 1.9), False, 0.5))
-        self.assertEqual(payout(100, 1.43), 143)
-        self.assertEqual(payout(15, 1.9), 28)   # 28.5 → 버림
-
-    def test_betting_state(self):
-        from datetime import datetime, timedelta, timezone
-
-        from bot.services.odds_model import betting_state
-
-        start = datetime(2026, 10, 8, 12, 0, tzinfo=timezone.utc)
-        at = lambda m: betting_state(start + timedelta(minutes=m), start, "upcoming")  # noqa: E731
-        self.assertEqual((at(-60), at(-10.01), at(-10), at(-1), at(0), at(5)), ("open", "open", "locked", "locked", "started", "started"))
-        self.assertEqual(betting_state(start, start, "live"), "started")
-        self.assertEqual(betting_state(start, None, "upcoming"), "unknown")
-
-    def test_mvp_and_settle(self):
-        from bot.services.odds_model import mvp_of, settle_outcome
-
-        P = lambda n, r, a: NS(name=n, rating=r, acs=a)  # noqa: E731
-        stats = [[P("Meteor", "1.20", "250"), P("aspas", "1.20", "260")], [P("Derrek", "1.05", "200"), P("x", None, None)]]
-        self.assertEqual(mvp_of(stats), "aspas")      # 레이팅 동률 → ACS
-        self.assertIsNone(mvp_of([]))
-        self.assertIsNone(mvp_of([[P("a", "-", "-")]]))
-        r = dict(score1=2, score2=1, mvp="aspas")
-        self.assertEqual(settle_outcome("winner", "1", **r), "won")
-        self.assertEqual(settle_outcome("winner", "2", **r), "lost")
-        self.assertEqual(settle_outcome("score", "2-1", **r), "won")
-        self.assertEqual(settle_outcome("score", "2-0", **r), "lost")
-        self.assertEqual(settle_outcome("mvp", "ASPAS", **r), "won")
-        self.assertEqual(settle_outcome("mvp", "Meteor", **r), "lost")
-        self.assertEqual(settle_outcome("mvp", "Meteor", score1=2, score2=1, mvp=None), "void")
-        self.assertEqual(settle_outcome("winner", "1", score1=None, score2=None, mvp=None), "void")
 
 
 class CommandStructureTest(unittest.TestCase):
@@ -585,65 +479,8 @@ class CommandStructureTest(unittest.TestCase):
                     self.assertEqual(nested, [], path)
 
 
-class EconomyCommandsTest(unittest.TestCase):
-    def test_new_commands_registered_and_named_lowercase(self):
-        import ast
-        tree = ast.parse(open("bot/commands/economy.py", encoding="utf-8").read())
-        names = []
-        for n in ast.walk(tree):
-            if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "command":
-                for k in n.keywords:
-                    if k.arg == "name":
-                        names.append(k.value.value)
-        self.assertEqual(set(names), {"vp", "출석", "vp랭킹", "예측", "내예측", "예측현황", "출첵", "ㅊㅊ"})
-        for nm in names:
-            self.assertEqual(nm, nm.lower())
-        self.assertIn("bot.commands.economy", open("bot/commands/__init__.py", encoding="utf-8").read())
 
 
-class GamesTest(unittest.TestCase):
-    def test_slot_rtp(self):
-        from bot.services import games
-        self.assertTrue(0.93 < games.slot_rtp() < 0.97)
-
-    def test_dice_and_coin_payouts(self):
-        from bot.services import games
-        self.assertEqual(games.dice_payout("홀", 3, 100), 195)
-        self.assertEqual(games.dice_payout("짝", 3, 100), 0)
-        self.assertEqual(games.dice_payout("4", 4, 100), 570)
-
-    def test_hand_value(self):
-        from bot.services import games
-        self.assertEqual(games.hand_value(["A♠", "K♥"]), 21)
-        self.assertEqual(games.hand_value(["A♠", "A♥", "9♦"]), 21)
-        self.assertEqual(games.hand_value(["K♠", "Q♥", "5♦"]), 25)
-
-    def test_blackjack_results(self):
-        import random
-        from bot.services import games
-        g = games.Blackjack(stake=100, deck=["7♣", "K♠", "K♥", "A♠"])
-        # 플레이어 A♠ K♥ = 블랙잭 (pop 순서: A♠, K♥ / 딜러 K♠, 7♣)
-        self.assertEqual(g.result(), ("blackjack", 250))
-        for seed in range(200):   # 어떤 판이든 지급액은 0 ~ 2.5배
-            g = games.Blackjack(stake=100, deck=games.new_deck(random.Random(seed)))
-            if not g.done:
-                g.stand()
-            outcome, pay = g.result()
-            self.assertIn(pay, (0, 100, 200, 250))
-
-    def test_quiz_bank_valid(self):
-        from bot.services import quiz_bank
-        for q, a, wrong in quiz_bank.QUESTIONS:
-            self.assertEqual(len(set(wrong)), 3)
-            self.assertNotIn(a, wrong)
-        _, _, options, ans = quiz_bank.pick_question()
-        self.assertEqual(len(options), 4)
-
-    def test_week_start_is_monday(self):
-        from datetime import datetime
-        from bot.services import quiz_bank
-        ws = quiz_bank.week_start(datetime(2026, 10, 8, 15, 30))
-        self.assertEqual((ws.weekday(), ws.hour), (0, 0))
 
 
 class TeamMapsTest(unittest.TestCase):
@@ -670,132 +507,12 @@ class TeamMapsTest(unittest.TestCase):
         self.assertTrue(png.startswith(b"\x89PNG"))
 
 
-class GameAnimTest(unittest.TestCase):
-    def test_gifs_render(self):
-        from bot.render import game_anim as g
-        for gif in (g.coin_gif("앞"), g.coin_gif("뒤"), g.dice_gif(3), g.slot_gif(["🍒", "🔥", "💎"]),
-                    g.deal_gif(["A♠", "K♥"], ["9♦", "7♣"]), g.finish_gif(["A♠", "K♥", "5♣"], ["10♦", "6♣", "9♥"])):
-            self.assertTrue(gif.startswith(b"GIF8"))
-            self.assertLess(len(gif), 1_000_000)
-
-    def test_table_and_quiz_image(self):
-        from PIL import Image
-        from bot.render import game_anim as g
-        self.assertTrue(g.table_png(["A♠", "K♥"], ["9♦", "7♣"], True).startswith(b"\x89PNG"))
-        art = Image.new("RGBA", (200, 300), (0, 0, 0, 0))
-        art.paste((255, 0, 0, 255), (50, 50, 150, 250))
-        self.assertTrue(g.quiz_image(art, silhouette=True).startswith(b"\x89PNG"))
-        self.assertTrue(g.quiz_image(art, silhouette=False, caption="제트").startswith(b"\x89PNG"))
-
-    def test_quiz_options(self):
-        import random
-        from bot.services import quiz_assets
-        opts, idx = quiz_assets._opts("제트", ["제트", "오멘", "소바", "세이지", "킬조이"], random.Random(1))
-        self.assertEqual(len(set(opts)), 4)
-        self.assertEqual(opts[idx], "제트")
 
 
-class ProfileShopTest(unittest.TestCase):
-    def test_catalog(self):
-        from bot.services import shop_catalog as c
-        self.assertEqual(len(c.BY_ID), len(c.ITEMS))
-        for kind, default in c.DEFAULTS.items():
-            self.assertIn(default, c.FREE_IDS)
-            self.assertEqual(c.BY_ID[default].kind, kind)
-        self.assertTrue(c.owned_or_free("theme_default", set()))
-        self.assertFalse(c.owned_or_free("frame_gold", set()))
-        self.assertTrue(c.owned_or_free("frame_gold", {"frame_gold"}))
-        self.assertLessEqual(len([i for i in c.ITEMS if i.price > 0]), 25)   # 상점 선택 메뉴 한도
-
-    def test_profile_card_renders(self):
-        from bot.render.profile_card import FRAME_COLORS, THEMES, render_profile_card
-        base = dict(name="테스트", title="뉴비", vp=1234, rank=1, pred_win=1, pred_total=2, quiz_week=1, quiz_limit=5,
-                    fav_team=None, fav_agent="제트")
-        for theme in THEMES:
-            for frame in ["frame_none", "frame_rainbow", *FRAME_COLORS]:
-                self.assertTrue(render_profile_card(dict(base, theme=theme, frame=frame)).startswith(b"\x89PNG"))
 
 
-class CancelFeeAndChannelTest(unittest.TestCase):
-    def test_cancel_fee_is_ten_percent_floor(self):
-        from bot.services.odds_model import cancel_fee
-        self.assertEqual(cancel_fee(100), 10)
-        self.assertEqual(cancel_fee(2000), 200)
-        self.assertEqual(cancel_fee(15), 1)      # 소수점 버림
-        self.assertEqual(cancel_fee(10), 1)
-
-    def test_game_channel_restriction(self):
-        from unittest.mock import patch
-        from bot.services import guild_settings as gsx
-
-        def inter(channel_id, admin=False):
-            return NS(guild_id=1, channel_id=channel_id, user=NS(id=5, guild_permissions=NS(administrator=admin)))
-
-        class FakeRestricted(Exception):   # discord 스텁에서는 CheckFailure 가 예외 클래스가 아니라서 대체
-            def __init__(self, channel_id):
-                self.channel_id = channel_id
-
-        with patch.object(gsx, "ChannelRestricted", FakeRestricted), patch.object(gsx, "get", AsyncMock(return_value=(100, None))):
-            self.assertTrue(asyncio.run(gsx.check_game_channel(inter(100))))            # 게임 채널
-            self.assertTrue(asyncio.run(gsx.check_game_channel(inter(7, admin=True))))  # 관리자는 예외
-            with self.assertRaises(FakeRestricted) as ctx:
-                asyncio.run(gsx.check_game_channel(inter(7)))
-            self.assertEqual(ctx.exception.channel_id, 100)
-        with patch.object(gsx, "get", AsyncMock(return_value=(None, None))):            # 설정 없으면 어디서나
-            self.assertTrue(asyncio.run(gsx.check_game_channel(inter(7))))
 
 
-class StockModelTest(unittest.TestCase):
-    def test_catalog(self):
-        from bot.services import stock_model as sm
-        self.assertEqual(len(sm.STOCKS), 6)
-        self.assertEqual(len({d.symbol for d in sm.STOCKS}), 6)
-        self.assertEqual(len({d.vlr_id for d in sm.STOCKS}), 6)
-        self.assertIn("VL", sm.BY_SYMBOL)
-        self.assertIn("KRX", sm.BY_SYMBOL)
-
-    def test_fee_and_totals(self):
-        from bot.services import stock_model as sm
-        self.assertEqual(sm.fee(100), 1)
-        self.assertEqual(sm.fee(150), 2)          # 올림
-        self.assertEqual(sm.fee(1), 1)            # 최소 1
-        self.assertEqual(sm.buy_total(200, 10), (2000, 20))
-        self.assertEqual(sm.sell_proceeds(200, 10), (1980, 20))
-
-    def test_price_stays_in_band_and_moves(self):
-        import random
-        from bot.services import stock_model as sm
-        self.assertEqual(sm.apply_move(100, 100, 0.0001), 101)          # 반올림으로 안 움직이면 최소 1
-        self.assertEqual(sm.apply_move(26, 100, -0.5), 25)              # 바닥 25%
-        self.assertEqual(sm.apply_move(390, 100, 0.5), 400)             # 천장 400%
-        rng = random.Random(1)
-        p = 100
-        for _ in range(5000):
-            p = sm.noise_step(p, 100, rng)
-            self.assertTrue(25 <= p <= 400)
-        # 평균 회귀: 기준가보다 많이 낮은 가격은 평균적으로 올라온다
-        ups = sum(sm.noise_step(50, 100, random.Random(i)) > 50 for i in range(200))
-        self.assertGreater(ups, 120)
-
-    def test_next_tick_is_top_of_next_hour(self):
-        from datetime import datetime, timedelta, timezone
-        from bot.services.stock_model import next_tick_at
-        kst = timezone(timedelta(hours=9))
-        self.assertEqual(next_tick_at(datetime(2026, 10, 8, 18, 10, 5, tzinfo=kst)), datetime(2026, 10, 8, 19, 0, tzinfo=kst))
-        self.assertEqual(next_tick_at(datetime(2026, 10, 8, 23, 59, tzinfo=kst)), datetime(2026, 10, 9, 0, 0, tzinfo=kst))
-        self.assertEqual(next_tick_at(datetime(2026, 10, 8, 18, 0, tzinfo=kst)), datetime(2026, 10, 8, 19, 0, tzinfo=kst))
-
-    def test_position_math(self):
-        from bot.services.stock_model import Position
-        p = Position("GEN", "젠지", 10, 100.0, 120)
-        self.assertEqual((p.value, p.pnl), (1200, 200))
-        self.assertAlmostEqual(p.pnl_pct, 20.0)
-
-    def test_board_card_renders(self):
-        from bot.render.stock_card import render_stock_board
-        from bot.services.stock_model import Quote
-        q = [Quote("GEN", "젠지", 300, 3.0, [290, 300]), Quote("T1", "티원", 250, None, [250])]
-        self.assertTrue(render_stock_board(q).startswith(b"\x89PNG"))
 
 
 
@@ -803,80 +520,10 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class StockRankingTest(unittest.TestCase):
-    def test_rank_by_pnl(self):
-        from bot.services import stock_model as sm
-
-        base = sm.STOCKS[0]
-        prices = {base.symbol: 1000}
-        # 유저1: 10주를 평균 800에 → +2000 / 유저2: 10주를 1200에 → -2000 / 유저3: 모르는 종목은 무시
-        rows = [(1, base.symbol, 10, 8000), (2, base.symbol, 10, 12000), (3, "ZZZ", 5, 100), (4, base.symbol, 0, 0)]
-        ranked = sm.rank_investors(rows, prices)
-        self.assertEqual([r[0] for r in ranked], [1, 2])
-        self.assertEqual(ranked[0][1:3], (10000, 2000))
-        self.assertAlmostEqual(ranked[0][3], 25.0)
-        self.assertEqual(ranked[1][2], -2000)
-
-    def test_chart_renders(self):
-        from bot.render.stock_chart import render_stock_chart
-
-        for single in (True, False):
-            png = render_stock_chart({"젠지": [1000, 1020, 990, 1050], "T1": [1200, 1180, 1250]}, "t", single=single)
-            self.assertTrue(png.startswith(b"\x89PNG"))
-        self.assertTrue(render_stock_chart({"젠지": [1000]}, "t", single=True).startswith(b"\x89PNG"))
 
 
-class PrewarmTest(unittest.TestCase):
-    def test_jobs_cover_coin_dice_slot(self):
-        from bot.render import game_anim
-
-        jobs = game_anim.prewarm_jobs()
-        v = game_anim.VARIANTS
-        self.assertEqual(len(jobs), 2 * v + 6 * v + 5 * v)
-        jobs[0]()  # 실제로 만들어져 캐시에 들어간다
-        before = game_anim._coin_cached.cache_info().hits
-        game_anim._coin_cached("앞", 0)
-        self.assertEqual(game_anim._coin_cached.cache_info().hits, before + 1)
 
 
-class MatchAlertTest(unittest.TestCase):
-    def test_schedules_once_and_skips_tbd(self):
-        from datetime import datetime, timedelta, timezone
-
-        scheduler = _import_scheduler()
-        now = datetime.now(timezone.utc)
-
-        def m(i, mins, t1="A", t2="B", status="upcoming"):
-            return NS(vlr_id=i, status=status, scheduled_at=now + timedelta(minutes=mins), team1_name=t1, team2_name=t2,
-                      tournament_name="T")
-
-        rows = [m(1, 50), m(2, 50, t2="TBD"), m(3, 5), m(4, 50, status="live"), m(5, 20)]
-        added = []
-        scheduler._scheduler = NS(add_job=lambda *a, **k: added.append((k["id"], k["run_date"])))
-        scheduler.broadcaster = AsyncMock()
-        scheduler.prediction_service = NS(is_tbd=lambda n: not n or n.strip().upper() == "TBD")
-        scheduler._alerted = set()
-        import sys
-        import bot.database as dbpkg
-
-        fake_repo = NS(get_matches_between=AsyncMock(return_value=rows))
-        sys.modules["bot.database.repository"] = fake_repo
-        dbpkg.repository = fake_repo
-
-        class _Ctx:
-            async def __aenter__(self): return None
-            async def __aexit__(self, *a): return False
-
-        scheduler.db = NS(session=lambda: _Ctx())
-        asyncio.run(scheduler._schedule_alerts())
-        asyncio.run(scheduler._schedule_alerts())   # 두 번째에는 새로 예약하지 않는다
-        ids = [i for i, _ in added]
-        self.assertEqual(ids, ["alert-1", "alert-5"])
-        self.assertAlmostEqual((added[0][1] - (rows[0].scheduled_at - timedelta(minutes=30))).total_seconds(), 0, delta=1)
-        self.assertGreater(added[1][1], now)   # 이미 30분 안이면 곧바로(몇 초 뒤)
-        scheduler._scheduler = None
-        sys.modules.pop("bot.database.repository", None)
-        del dbpkg.repository
 
 
 class SkinCatalogTest(unittest.TestCase):
@@ -1061,37 +708,8 @@ class TierEmojiNameTest(unittest.TestCase):
         self.assertEqual(n, "tier_411e4a55")
 
 
-class PickFansTest(unittest.TestCase):
-    def test_pick_fans(self):
-        from bot.services.odds_model import pick_fans
-
-        rows = [(1, "Gen.G"), (2, "t1"), (3, None), (4, "Paper Rex"), (1, "Gen.G"), (5, "GEN G")]
-        self.assertEqual(pick_fans(rows, "Gen.G", "T1"), [1, 2, 5])          # 대소문자·기호 무시, 중복 제거
-        self.assertEqual(pick_fans(rows, "Gen.G", "T1", limit=2), [1, 2])
-        self.assertEqual(pick_fans(rows, "TBD", ""), [])
 
 
-class StockExtrasTest(unittest.TestCase):
-    def test_find_surges(self):
-        from bot.services import stock_model as sm
-
-        a, b, c = (d.symbol for d in sm.STOCKS[:3])
-        out = sm.find_surges({a: 1000, b: 1000, c: 1000, "ZZZ": 10}, {a: 1070, b: 930, c: 1030, "ZZZ": 100, "NEW": 5})
-        self.assertEqual([(s, round(p)) for s, _, _, p in out], [(a, 7), (b, -7)])    # 6% 미만·모르는 종목·이전가 없음은 제외
-
-    def test_parse_trade_ref(self):
-        from bot.services.stock_model import parse_trade_ref
-
-        self.assertEqual(parse_trade_ref("GENx10@1020"), ("GEN", 10, 1020))
-        self.assertIsNone(parse_trade_ref("prediction:12"))
-        self.assertIsNone(parse_trade_ref(None))
-
-    def test_rainbow_frame_renders_continuous(self):
-        from bot.render.profile_card import render_profile_card
-
-        png = render_profile_card(dict(name="a", title="x", vp=1, rank=1, pred_win=0, pred_total=0, fav_team=None, fav_agent=None,
-                                       theme="theme_default", frame="frame_rainbow"))
-        self.assertTrue(png.startswith(b"\x89PNG"))
 
 
 class Connect4Test(unittest.TestCase):
