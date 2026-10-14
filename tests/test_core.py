@@ -568,6 +568,30 @@ class RiotStatsTest(unittest.TestCase):
         self.assertTrue(render_user_card(UserStats(name="N", tag="T", region="kr"), None, {}).startswith(PNG))
 
 
+
+class RateLimitLogTest(unittest.TestCase):
+    def test_collapses_429_and_throttles(self):
+        import logging
+        from bot.utils.logger import CollapseRateLimit
+
+        class Http(Exception):
+            status = 429
+
+        f = CollapseRateLimit()
+
+        def rec(exc):
+            return logging.LogRecord("x", logging.ERROR, "f", 1, "boom", (), (type(exc), exc, None))
+
+        first = rec(Http())
+        self.assertTrue(f.filter(first))
+        self.assertIsNone(first.exc_info)
+        self.assertEqual(first.levelname, "WARNING")
+        self.assertFalse(f.filter(rec(Http())))                 # 30초 안의 반복은 버림
+        other = rec(ValueError("x"))
+        self.assertTrue(f.filter(other))                         # 다른 오류는 그대로
+        self.assertIsNotNone(other.exc_info)
+
+
 if __name__ == "__main__":
     unittest.main()
 
